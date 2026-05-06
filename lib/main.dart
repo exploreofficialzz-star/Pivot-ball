@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'screens/splash_screen.dart';
 import 'utils/ad_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -18,9 +19,9 @@ void main() async {
       statusBarBrightness: Brightness.dark,
     ),
   );
-  
+
   await AdManager.instance.initialize();
-  
+
   runApp(const PivotBallApp());
 }
 
@@ -39,7 +40,11 @@ class PivotBallApp extends StatelessWidget {
           seedColor: const Color(0xFFFFB800),
           brightness: Brightness.dark,
         ),
-        fontFamily: 'ArcadeClassic',
+        // Press Start 2P — retro arcade pixel font from Google Fonts
+        // Replaces ArcadeClassic + PixelEmulator (no .ttf files needed)
+        textTheme: GoogleFonts.pressStart2pTextTheme(
+          ThemeData.dark().textTheme,
+        ),
         scaffoldBackgroundColor: Colors.black,
       ),
       home: const SplashScreen(),
