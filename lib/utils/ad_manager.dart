@@ -3,6 +3,31 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+// ---------------------------------------------------------------------------
+// Ad unit IDs are injected at build time via --dart-define flags.
+// In CI/CD these come from GitHub Secrets.  Locally, either pass them with
+// --dart-define or the test IDs below are used as safe defaults.
+// ---------------------------------------------------------------------------
+const String _kTestBannerAndroid       = 'ca-app-pub-3940256099942544/6300978111';
+const String _kTestBannerIos           = 'ca-app-pub-3940256099942544/2934735716';
+const String _kTestInterstitialAndroid = 'ca-app-pub-3940256099942544/1033173712';
+const String _kTestInterstitialIos     = 'ca-app-pub-3940256099942544/4411468910';
+const String _kTestRewardedAndroid     = 'ca-app-pub-3940256099942544/5224354917';
+const String _kTestRewardedIos         = 'ca-app-pub-3940256099942544/1712485313';
+
+const String _bannerAndroid =
+    String.fromEnvironment('ADMOB_BANNER_ANDROID',       defaultValue: _kTestBannerAndroid);
+const String _bannerIos =
+    String.fromEnvironment('ADMOB_BANNER_IOS',           defaultValue: _kTestBannerIos);
+const String _interstitialAndroid =
+    String.fromEnvironment('ADMOB_INTERSTITIAL_ANDROID', defaultValue: _kTestInterstitialAndroid);
+const String _interstitialIos =
+    String.fromEnvironment('ADMOB_INTERSTITIAL_IOS',     defaultValue: _kTestInterstitialIos);
+const String _rewardedAndroid =
+    String.fromEnvironment('ADMOB_REWARDED_ANDROID',     defaultValue: _kTestRewardedAndroid);
+const String _rewardedIos =
+    String.fromEnvironment('ADMOB_REWARDED_IOS',         defaultValue: _kTestRewardedIos);
+
 class AdManager {
   static final AdManager _instance = AdManager._internal();
   static AdManager get instance => _instance;
@@ -22,32 +47,14 @@ class AdManager {
     _loadRewardedAd();
   }
 
-  static String get bannerAdUnitId {
-    if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/6300978111';
-    } else if (Platform.isIOS) {
-      return 'ca-app-pub-3940256099942544/2934735716';
-    }
-    return '';
-  }
+  static String get bannerAdUnitId =>
+      Platform.isAndroid ? _bannerAndroid : _bannerIos;
 
-  static String get interstitialAdUnitId {
-    if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/1033173712';
-    } else if (Platform.isIOS) {
-      return 'ca-app-pub-3940256099942544/4411468910';
-    }
-    return '';
-  }
+  static String get interstitialAdUnitId =>
+      Platform.isAndroid ? _interstitialAndroid : _interstitialIos;
 
-  static String get rewardedAdUnitId {
-    if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/5224354917';
-    } else if (Platform.isIOS) {
-      return 'ca-app-pub-3940256099942544/1712485313';
-    }
-    return '';
-  }
+  static String get rewardedAdUnitId =>
+      Platform.isAndroid ? _rewardedAndroid : _rewardedIos;
 
   void _loadInterstitialAd() {
     InterstitialAd.load(
@@ -83,7 +90,7 @@ class AdManager {
     if (_premiumUser) return;
     _gameCount++;
     if (_gameCount % 3 != 0) return;
-    
+
     if (_interstitialAd != null) {
       _interstitialAd!.show();
       _interstitialAd = null;
@@ -120,7 +127,7 @@ class AdManager {
 
 class BannerAdWidget extends StatefulWidget {
   final String adUnitId;
-  
+
   const BannerAdWidget({super.key, required this.adUnitId});
 
   @override
