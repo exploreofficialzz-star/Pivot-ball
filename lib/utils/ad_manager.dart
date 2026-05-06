@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 // ---------------------------------------------------------------------------
-// Ad unit IDs are injected at build time via --dart-define flags.
-// In CI/CD these come from GitHub Secrets.  Locally, either pass them with
-// --dart-define or the test IDs below are used as safe defaults.
+// Ad unit IDs injected at build time via --dart-define.
+// Falls back to Google's official test IDs so ads always work during dev/QA.
 // ---------------------------------------------------------------------------
 const String _kTestBannerAndroid       = 'ca-app-pub-3940256099942544/6300978111';
 const String _kTestBannerIos           = 'ca-app-pub-3940256099942544/2934735716';
@@ -39,14 +38,25 @@ class AdManager {
   int _gameCount = 0;
   bool _premiumUser = false;
 
+  // -------------------------------------------------------------------------
+  // Initialize — never blocks the app; 8-second safety timeout
+  // -------------------------------------------------------------------------
   Future<void> initialize() async {
     if (_initialized) return;
-    await MobileAds.instance.initialize();
+    try {
+      await MobileAds.instance.initialize().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => InitializationStatus({}),
+      );
+    } catch (_) {}
     _initialized = true;
     _loadInterstitialAd();
     _loadRewardedAd();
   }
 
+  // -------------------------------------------------------------------------
+  // Ad unit IDs
+  // -------------------------------------------------------------------------
   static String get bannerAdUnitId =>
       Platform.isAndroid ? _bannerAndroid : _bannerIos;
 
@@ -56,78 +66,106 @@ class AdManager {
   static String get rewardedAdUnitId =>
       Platform.isAndroid ? _rewardedAndroid : _rewardedIos;
 
+  // -------------------------------------------------------------------------
+  // Interstitial
+  // -------------------------------------------------------------------------
   void _loadInterstitialAd() {
+    if (!_initialized) return;
     InterstitialAd.load(
       adUnitId: interstitialAdUnitId,
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           _interstitialAd = ad;
+          _interstitialAd!.setImmersiveMode(true);
         },
-        onAdFailedToLoad: (error) {
-          _interstitialAd = null;
-        },
-      ),
-    );
-  }
-
-  void _loadRewardedAd() {
-    RewardedAd.load(
-      adUnitId: rewardedAdUnitId,
-      request: const AdRequest(),
-      rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) {
-          _rewardedAd = ad;
-        },
-        onAdFailedToLoad: (error) {
-          _rewardedAd = null;
-        },
+        onAdFailedToLoad: (_) => _interstitialAd = null,
       ),
     );
   }
 
   void showInterstitialAd() {
-    if (_premiumUser) return;
+    if (_premiumUser || !_initialized) return;
     _gameCount++;
     if (_gameCount % 3 != 0) return;
-
-    if (_interstitialAd != null) {
-      _interstitialAd!.show();
-      _interstitialAd = null;
-      _loadInterstitialAd();
+    if (_interstitialAd == null) {
+      _loadInterstitialAd(); // preload for next time
+      return;
     }
+    _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _interstitialAd = null;
+        _loadInterstitialAd();
+      },
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        _interstitialAd = null;
+        _loadInterstitialAd();
+      },
+    );
+    _interstitialAd!.show();
+    _interstitialAd = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Rewarded
+  // -------------------------------------------------------------------------
+  void _loadRewardedAd() {
+    if (!_initialized) return;
+    RewardedAd.load(
+      adUnitId: rewardedAdUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) => _rewardedAd = ad,
+        onAdFailedToLoad: (_) => _rewardedAd = null,
+      ),
+    );
   }
 
   Future<bool> showRewardedAd() async {
-    if (_rewardedAd != null) {
-      final completer = Completer<bool>();
-      _rewardedAd!.show(
-        onUserEarnedReward: (_, reward) {
-          completer.complete(true);
-        },
-      );
-      _rewardedAd = null;
-      _loadRewardedAd();
-      return completer.future;
-    }
-    return false;
+    if (!_initialized || _rewardedAd == null) return false;
+    final completer = Completer<bool>();
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        _rewardedAd = null;
+        _loadRewardedAd();
+        if (!completer.isCompleted) completer.complete(false);
+      },
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        _rewardedAd = null;
+        _loadRewardedAd();
+        if (!completer.isCompleted) completer.complete(false);
+      },
+    );
+    _rewardedAd!.show(
+      onUserEarnedReward: (_, __) {
+        if (!completer.isCompleted) completer.complete(true);
+      },
+    );
+    _rewardedAd = null;
+    return completer.future;
   }
 
+  // -------------------------------------------------------------------------
+  // Banner
+  // -------------------------------------------------------------------------
   Widget buildBannerAd() {
-    if (_premiumUser) return const SizedBox.shrink();
+    if (_premiumUser || !_initialized) return const SizedBox.shrink();
     return BannerAdWidget(adUnitId: bannerAdUnitId);
   }
 
-  void setPremiumUser(bool value) {
-    _premiumUser = value;
-  }
-
+  void setPremiumUser(bool value) => _premiumUser = value;
   bool get isPremiumUser => _premiumUser;
 }
 
+// ---------------------------------------------------------------------------
+// Banner widget — auto-retries once on failure
+// ---------------------------------------------------------------------------
 class BannerAdWidget extends StatefulWidget {
   final String adUnitId;
-
   const BannerAdWidget({super.key, required this.adUnitId});
 
   @override
@@ -137,6 +175,7 @@ class BannerAdWidget extends StatefulWidget {
 class _BannerAdWidgetState extends State<BannerAdWidget> {
   BannerAd? _bannerAd;
   bool _loaded = false;
+  int _retryCount = 0;
 
   @override
   void initState() {
@@ -145,20 +184,25 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   }
 
   void _loadBannerAd() {
+    _bannerAd?.dispose();
     _bannerAd = BannerAd(
       adUnitId: widget.adUnitId,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (_) {
-          if (mounted) {
-            setState(() {
-              _loaded = true;
+          if (mounted) setState(() => _loaded = true);
+        },
+        onAdFailedToLoad: (ad, _) {
+          ad.dispose();
+          _bannerAd = null;
+          // Retry once after 3 seconds
+          if (_retryCount < 1 && mounted) {
+            _retryCount++;
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted) _loadBannerAd();
             });
           }
-        },
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
         },
       ),
     );
@@ -167,11 +211,8 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_loaded || _bannerAd == null) {
-      return const SizedBox(height: 50);
-    }
-    return Container(
-      alignment: Alignment.center,
+    if (!_loaded || _bannerAd == null) return const SizedBox(height: 50);
+    return SizedBox(
       width: _bannerAd!.size.width.toDouble(),
       height: _bannerAd!.size.height.toDouble(),
       child: AdWidget(ad: _bannerAd!),

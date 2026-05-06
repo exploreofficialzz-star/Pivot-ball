@@ -20,7 +20,8 @@ void main() async {
     ),
   );
 
-  await AdManager.instance.initialize();
+  // Initialize ads in background — never block the UI
+  AdManager.instance.initialize();
 
   runApp(const PivotBallApp());
 }
@@ -40,8 +41,6 @@ class PivotBallApp extends StatelessWidget {
           seedColor: const Color(0xFFFFB800),
           brightness: Brightness.dark,
         ),
-        // Press Start 2P — retro arcade pixel font from Google Fonts
-        // Replaces ArcadeClassic + PixelEmulator (no .ttf files needed)
         textTheme: GoogleFonts.pressStart2pTextTheme(
           ThemeData.dark().textTheme,
         ),
