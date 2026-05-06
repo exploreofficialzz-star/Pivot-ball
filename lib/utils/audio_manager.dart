@@ -11,53 +11,62 @@ class AudioManager {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    await FlameAudio.audioCache.loadAll([
-      'click.mp3',
-      'win.mp3',
-      'lose.mp3',
-      'roll.mp3',
-      'bgm.mp3',
-    ]);
+    try {
+      // 5-second timeout — if audio fails to load, app continues normally
+      await FlameAudio.audioCache.loadAll([
+        'click.mp3',
+        'win.mp3',
+        'lose.mp3',
+        'roll.mp3',
+        'bgm.mp3',
+      ]).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          // Audio unavailable — game still works, just silent
+          return [];
+        },
+      );
+    } catch (_) {
+      // Never block the app over audio
+    }
     _initialized = true;
   }
 
   void playClick() {
-    if (!_soundEnabled) return;
-    FlameAudio.play('click.mp3', volume: 0.5);
+    if (!_soundEnabled || !_initialized) return;
+    try { FlameAudio.play('click.mp3', volume: 0.5); } catch (_) {}
   }
 
   void playWin() {
-    if (!_soundEnabled) return;
-    FlameAudio.play('win.mp3', volume: 0.8);
+    if (!_soundEnabled || !_initialized) return;
+    try { FlameAudio.play('win.mp3', volume: 0.8); } catch (_) {}
   }
 
   void playLose() {
-    if (!_soundEnabled) return;
-    FlameAudio.play('lose.mp3', volume: 0.7);
+    if (!_soundEnabled || !_initialized) return;
+    try { FlameAudio.play('lose.mp3', volume: 0.7); } catch (_) {}
   }
 
   void playRoll() {
-    if (!_soundEnabled) return;
-    // Roll sound is continuous, handled separately
+    if (!_soundEnabled || !_initialized) return;
   }
 
   void startMusic() {
-    if (!_musicEnabled) return;
-    FlameAudio.bgm.play('bgm.mp3', volume: 0.4);
+    if (!_musicEnabled || !_initialized) return;
+    try { FlameAudio.bgm.play('bgm.mp3', volume: 0.4); } catch (_) {}
   }
 
   void stopMusic() {
-    FlameAudio.bgm.stop();
+    try { FlameAudio.bgm.stop(); } catch (_) {}
   }
 
   void pauseMusic() {
-    FlameAudio.bgm.pause();
+    try { FlameAudio.bgm.pause(); } catch (_) {}
   }
 
   void resumeMusic() {
-    if (_musicEnabled) {
-      FlameAudio.bgm.resume();
-    }
+    if (!_musicEnabled || !_initialized) return;
+    try { FlameAudio.bgm.resume(); } catch (_) {}
   }
 
   void setSoundEnabled(bool value) {

@@ -21,49 +21,51 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-    
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2000),
     );
-    
+
     _fadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
       ),
     );
-    
+
     _scale = Tween<double>(begin: 0.5, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
       ),
     );
-    
+
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
     _controller.forward();
-    
-    // Initialize all managers
+
+    // Storage must complete — it's fast and needed before menu
     await StorageManager.instance.initialize();
-    await AudioManager.instance.initialize();
-    
-    // Check if sound settings exist
+
     final soundEnabled = StorageManager.instance.getSoundEnabled();
     final musicEnabled = StorageManager.instance.getMusicEnabled();
     AudioManager.instance.setSoundEnabled(soundEnabled);
     AudioManager.instance.setMusicEnabled(musicEnabled);
-    
-    // Navigate after delay
+
+    // Audio loads in background — never blocks navigation
+    AudioManager.instance.initialize();
+
+    // Show splash for 3 seconds then go to menu regardless
     await Future.delayed(const Duration(milliseconds: 3000));
-    
+
     if (mounted) {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => const MenuScreen(),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              const MenuScreen(),
           transitionsBuilder: (context, anim, secondaryAnimation, child) {
             return FadeTransition(opacity: anim, child: child);
           },
@@ -99,7 +101,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
           ),
-          
+
           // Animated content
           Center(
             child: AnimatedBuilder(
@@ -134,9 +136,9 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 30),
-                        
+
                         // Game title
                         const Text(
                           GameConstants.appName,
@@ -153,9 +155,9 @@ class _SplashScreenState extends State<SplashScreen>
                             ],
                           ),
                         ),
-                        
+
                         const SizedBox(height: 8),
-                        
+
                         // Subtitle
                         Text(
                           GameConstants.appSubtitle.toUpperCase(),
@@ -165,9 +167,9 @@ class _SplashScreenState extends State<SplashScreen>
                             letterSpacing: 6,
                           ),
                         ),
-                        
+
                         const SizedBox(height: 60),
-                        
+
                         // Loading indicator
                         SizedBox(
                           width: 40,
@@ -186,7 +188,7 @@ class _SplashScreenState extends State<SplashScreen>
               },
             ),
           ),
-          
+
           // Company credit at bottom
           Positioned(
             bottom: 40,
