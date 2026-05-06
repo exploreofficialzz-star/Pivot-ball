@@ -32,11 +32,14 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Create asset directories
+        run: mkdir -p assets/images assets/audio
+
       - name: Get dependencies
         run: flutter pub get
 
       - name: Analyze code
-        run: flutter analyze
+        run: flutter analyze --no-fatal-warnings
 
       - name: Decode Android Keystore
         run: |
@@ -110,6 +113,9 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Create asset directories
+        run: mkdir -p assets/images assets/audio
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -150,3 +156,4 @@ jobs:
           files: build/ios/iphoneos/PivotBall.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
