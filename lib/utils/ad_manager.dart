@@ -141,7 +141,7 @@ class AdManager {
       },
     );
     _rewardedAd!.show(
-      onUserEarnedReward: (_, __) {
+      onUserEarnedReward: (_, reward) {
         if (!completer.isCompleted) completer.complete(true);
       },
     );
