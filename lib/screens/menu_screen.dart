@@ -24,7 +24,7 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    AudioManager.instance.startMusic(); // async, fire-and-forget
+    AudioManager.instance.resumeMusic(); // resume — don't restart from beginning
     
     _animController = AnimationController(
       vsync: this,
@@ -250,7 +250,7 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                           const SizedBox(height: 20),
                           
                           // Banner ad
-                          AdManager.instance.buildBannerAd(),
+                          AdManager.instance.buildBannerAd(showNudge: true),
                           
                           const SizedBox(height: 10),
                         ],

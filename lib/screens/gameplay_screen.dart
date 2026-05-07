@@ -31,7 +31,7 @@ class _GameplayScreenState extends State<GameplayScreen> {
   void initState() {
     super.initState();
     _currentLevel = widget.startLevel;
-    AudioManager.instance.stopMusic();
+    // BGM keeps playing — never stop on screen enter
     _startCountdown();
   }
 
@@ -319,14 +319,14 @@ class _GameplayScreenState extends State<GameplayScreen> {
                       }),
                       const SizedBox(height: 16),
                       _pauseBtn('QUIT', GameConstants.neonRed, () {
-                        AudioManager.instance.startMusic();
+                        AudioManager.instance.resumeMusic();
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(builder: (_) => const MenuScreen()),
                           (r) => false,
                         );
                       }),
                       const SizedBox(height: 20),
-                      AdManager.instance.buildBannerAd(),
+                      AdManager.instance.buildBannerAd(showNudge: true),
                     ],
                   ),
                 ),

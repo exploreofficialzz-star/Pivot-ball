@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../utils/audio_manager.dart';
 import '../utils/storage_manager.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'menu_screen.dart';
+import 'no_internet_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -55,20 +57,32 @@ class _SplashScreenState extends State<SplashScreen>
     AudioManager.instance.setSoundEnabled(soundEnabled);
     AudioManager.instance.setMusicEnabled(musicEnabled);
 
-    // BGM init is fast — await it so music is ready before menu
-    await AudioManager.instance.initialize();
+    // BGM already initialized in main() — just start playing
+    if (AudioManager.instance.musicEnabled) {
+      AudioManager.instance.startMusic();
+    }
 
     // Show splash for 3 seconds then go to menu regardless
     await Future.delayed(const Duration(milliseconds: 3000));
 
+    if (!mounted) return;
+
+    // Network gate — game is ad-supported, internet required
+    Widget destination = const MenuScreen();
+    try {
+      final result = await Connectivity().checkConnectivity();
+      final online = result.any((r) => r != ConnectivityResult.none);
+      if (!online) destination = const NoInternetScreen();
+    } catch (_) {
+      destination = const NoInternetScreen();
+    }
+
     if (mounted) {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              const MenuScreen(),
-          transitionsBuilder: (context, anim, secondaryAnimation, child) {
-            return FadeTransition(opacity: anim, child: child);
-          },
+          pageBuilder: (_, __, ___) => destination,
+          transitionsBuilder: (_, anim, __, child) =>
+              FadeTransition(opacity: anim, child: child),
           transitionDuration: const Duration(milliseconds: 800),
         ),
       );
