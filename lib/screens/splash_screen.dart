@@ -55,8 +55,8 @@ class _SplashScreenState extends State<SplashScreen>
     AudioManager.instance.setSoundEnabled(soundEnabled);
     AudioManager.instance.setMusicEnabled(musicEnabled);
 
-    // Audio loads in background — never blocks navigation
-    AudioManager.instance.initialize();
+    // BGM init is fast — await it so music is ready before menu
+    await AudioManager.instance.initialize();
 
     // Show splash for 3 seconds then go to menu regardless
     await Future.delayed(const Duration(milliseconds: 3000));

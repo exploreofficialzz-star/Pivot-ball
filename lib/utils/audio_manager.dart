@@ -1,59 +1,69 @@
 import 'package:flame_audio/flame_audio.dart';
 
+/// Thin wrapper around flame_audio 2.x / audioplayers 5.x.
+///
+/// KEY rules for flame_audio 2.x:
+///  1. FlameAudio.bgm.initialize() MUST be called before bgm.play().
+///  2. FlameAudio.play() works any time — no pre-loading required.
+///  3. The audio cache prefix is already set to 'assets/audio/' by Flame,
+///     so pass bare filenames ('click.mp3', not 'audio/click.mp3').
 class AudioManager {
   static final AudioManager _instance = AudioManager._internal();
   static AudioManager get instance => _instance;
   AudioManager._internal();
 
-  bool _initialized = false;
-  bool _soundEnabled = true;
-  bool _musicEnabled = true;
+  bool _bgmReady      = false;
+  bool _soundEnabled  = true;
+  bool _musicEnabled  = true;
 
+  // -------------------------------------------------------------------------
+  // Initialize — only needs to set up BGM lifecycle observer.
+  // SFX (FlameAudio.play) work without any initialization.
+  // -------------------------------------------------------------------------
   Future<void> initialize() async {
-    if (_initialized) return;
+    if (_bgmReady) return;
     try {
-      // 5-second timeout — if audio fails to load, app continues normally
-      await FlameAudio.audioCache.loadAll([
-        'click.mp3',
-        'win.mp3',
-        'lose.mp3',
-        'roll.mp3',
-        'bgm.mp3',
-      ]).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          // Audio unavailable — game still works, just silent
-          return [];
-        },
-      );
+      // Required in flame_audio 2.x before using FlameAudio.bgm
+      FlameAudio.bgm.initialize();
+      _bgmReady = true;
     } catch (_) {
-      // Never block the app over audio
+      // If BGM setup fails, SFX still work fine
+      _bgmReady = false;
     }
-    _initialized = true;
   }
 
+  // -------------------------------------------------------------------------
+  // Sound effects — no initialization needed, play immediately
+  // -------------------------------------------------------------------------
   void playClick() {
-    if (!_soundEnabled || !_initialized) return;
+    if (!_soundEnabled) return;
     try { FlameAudio.play('click.mp3', volume: 0.5); } catch (_) {}
   }
 
   void playWin() {
-    if (!_soundEnabled || !_initialized) return;
+    if (!_soundEnabled) return;
     try { FlameAudio.play('win.mp3', volume: 0.8); } catch (_) {}
   }
 
   void playLose() {
-    if (!_soundEnabled || !_initialized) return;
+    if (!_soundEnabled) return;
     try { FlameAudio.play('lose.mp3', volume: 0.7); } catch (_) {}
   }
 
   void playRoll() {
-    if (!_soundEnabled || !_initialized) return;
+    if (!_soundEnabled) return;
+    try { FlameAudio.play('roll.mp3', volume: 0.3); } catch (_) {}
   }
 
-  void startMusic() {
-    if (!_musicEnabled || !_initialized) return;
-    try { FlameAudio.bgm.play('bgm.mp3', volume: 0.4); } catch (_) {}
+  // -------------------------------------------------------------------------
+  // Background music — requires bgm.initialize() first
+  // -------------------------------------------------------------------------
+  Future<void> startMusic() async {
+    if (!_musicEnabled) return;
+    if (!_bgmReady) await initialize();
+    try {
+      await FlameAudio.bgm.play('bgm.mp3', volume: 0.4);
+    } catch (_) {}
   }
 
   void stopMusic() {
@@ -64,22 +74,20 @@ class AudioManager {
     try { FlameAudio.bgm.pause(); } catch (_) {}
   }
 
-  void resumeMusic() {
-    if (!_musicEnabled || !_initialized) return;
-    try { FlameAudio.bgm.resume(); } catch (_) {}
+  Future<void> resumeMusic() async {
+    if (!_musicEnabled) return;
+    try { await FlameAudio.bgm.resume(); } catch (_) {}
   }
 
-  void setSoundEnabled(bool value) {
-    _soundEnabled = value;
-  }
+  // -------------------------------------------------------------------------
+  // Settings
+  // -------------------------------------------------------------------------
+  void setSoundEnabled(bool value) => _soundEnabled = value;
 
   void setMusicEnabled(bool value) {
     _musicEnabled = value;
-    if (!value) {
-      stopMusic();
-    } else {
-      startMusic();
-    }
+    if (!value) stopMusic();
+    else startMusic();
   }
 
   bool get soundEnabled => _soundEnabled;

@@ -24,7 +24,7 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    AudioManager.instance.startMusic();
+    AudioManager.instance.startMusic(); // async, fire-and-forget
     
     _animController = AnimationController(
       vsync: this,
