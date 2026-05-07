@@ -164,36 +164,52 @@ class _GameplayScreenState extends State<GameplayScreen> {
                 ),
               ),
 
-            // Joysticks
+            // ── Bottom control panel ─────────────────────────────────
             if (!_showCountdown && !_isPaused && _levelData != null)
               Positioned(
-                bottom: 30,
-                left: 0, right: 0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: size.width * 0.22,
-                      alignment: Alignment.center,
-                      child: VirtualJoystick(
-                        size:      size.width * 0.18,
-                        color:     Colors.red,
-                        onMove:    (v) => _gameKey.currentState?.setLeftInput(v),
-                        onRelease: ()  => _gameKey.currentState?.setLeftInput(0),
-                      ),
+                bottom: 0, left: 0, right: 0,
+                child: Container(
+                  height: size.height * 0.22,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end:   Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.0),
+                        Colors.black.withOpacity(0.85),
+                        Colors.black,
+                      ],
+                      stops: const [0.0, 0.3, 1.0],
                     ),
-                    SizedBox(width: size.width * 0.5),
-                    Container(
-                      width: size.width * 0.22,
-                      alignment: Alignment.center,
-                      child: VirtualJoystick(
-                        size:      size.width * 0.18,
-                        color:     Colors.blue,
-                        onMove:    (v) => _gameKey.currentState?.setRightInput(v),
-                        onRelease: ()  => _gameKey.currentState?.setRightInput(0),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Left joystick
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16, bottom: 12),
+                        child: VirtualJoystick(
+                          size:      size.width * 0.2,
+                          color:     Colors.red,
+                          onMove:    (v) => _gameKey.currentState?.setLeftInput(v),
+                          onRelease: ()  => _gameKey.currentState?.setLeftInput(0),
+                        ),
                       ),
-                    ),
-                  ],
+                      // Center — empty, shows nothing
+                      const Spacer(),
+                      // Right joystick
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16, bottom: 12),
+                        child: VirtualJoystick(
+                          size:      size.width * 0.2,
+                          color:     Colors.blue,
+                          onMove:    (v) => _gameKey.currentState?.setRightInput(v),
+                          onRelease: ()  => _gameKey.currentState?.setRightInput(0),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
