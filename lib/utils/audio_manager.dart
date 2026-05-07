@@ -86,8 +86,11 @@ class AudioManager {
 
   void setMusicEnabled(bool value) {
     _musicEnabled = value;
-    if (!value) stopMusic();
-    else startMusic();
+    if (!value) {
+      stopMusic();
+    } else {
+      startMusic();
+    }
   }
 
   bool get soundEnabled => _soundEnabled;
