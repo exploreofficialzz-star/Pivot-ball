@@ -54,8 +54,8 @@ class _NoInternetScreenState extends State<NoInternetScreen>
         AdManager.instance.initialize();
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => const MenuScreen(),
-            transitionsBuilder: (_, anim, __, child) =>
+            pageBuilder: (context, animation, secondaryAnimation) => const MenuScreen(),
+            transitionsBuilder: (context, anim, secondaryAnimation, child) =>
                 FadeTransition(opacity: anim, child: child),
             transitionDuration: const Duration(milliseconds: 600),
           ),
@@ -99,7 +99,7 @@ class _NoInternetScreenState extends State<NoInternetScreen>
                   // Pulsing wifi-off icon
                   AnimatedBuilder(
                     animation: _pulse,
-                    builder: (_, __) => Opacity(
+                    builder: (context, child) => Opacity(
                       opacity: _pulse.value,
                       child: Container(
                         width: 110,
