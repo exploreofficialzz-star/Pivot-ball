@@ -140,14 +140,14 @@ class AdManager {
     );
   }
 
-  /// Show interstitial ad. Call on every game-over.
-  /// If not loaded yet, queues load for next game-over automatically.
-  void showInterstitialAd() {
-    if (!_sdkReady) return;
-
-    if (_interstitialAd == null) {
-      // Not ready — reload so next game-over will have one
-      _loadInterstitialAd();
+  /// Show interstitial ad.
+  /// [onDismissed] is called when the ad closes OR if no ad is available —
+  /// so the caller can always continue its flow regardless of ad state.
+  void showInterstitialAd({VoidCallback? onDismissed}) {
+    if (!_sdkReady || _interstitialAd == null) {
+      _loadInterstitialAd(); // queue for next time
+      // No ad ready — call onDismissed after a short pause so UX feels intentional
+      Future.delayed(const Duration(milliseconds: 300), () => onDismissed?.call());
       return;
     }
 
@@ -155,12 +155,14 @@ class AdManager {
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _interstitialAd = null;
-        _loadInterstitialAd(); // immediately queue next
+        _loadInterstitialAd();
+        onDismissed?.call();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         _interstitialAd = null;
         _loadInterstitialAd();
+        onDismissed?.call();
       },
     );
     _interstitialAd!.show();
