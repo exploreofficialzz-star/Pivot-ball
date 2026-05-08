@@ -89,18 +89,14 @@ class _GameplayScreenState extends State<GameplayScreen> {
       // Unlock one ahead so the player can continue from where they left off
       StorageManager.instance.saveUnlockedLevel(level + 1);
 
-      // Show interstitial on every win — main revenue trigger
-      AdManager.instance.showInterstitialAd();
-
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      // Show interstitial FIRST — countdown starts only after ad dismisses
+      AdManager.instance.showInterstitialAd(onDismissed: () {
         if (!mounted) return;
         setState(() {
           _currentLevel++;
-          // Milestone every 25 levels — show a banner, then keep playing
           _showMilestone = LevelData.isMilestone(_currentLevel - 1);
           _levelData     = LevelData.generate(_currentLevel, MediaQuery.of(context).size);
         });
-
         if (_showMilestone) {
           Future.delayed(const Duration(seconds: 2), () {
             if (!mounted) return;
@@ -112,8 +108,7 @@ class _GameplayScreenState extends State<GameplayScreen> {
         }
       });
     } else {
-      AdManager.instance.showInterstitialAd();
-      Future.delayed(const Duration(milliseconds: 500), () {
+      AdManager.instance.showInterstitialAd(onDismissed: () {
         if (!mounted) return;
         Navigator.of(context).pushReplacement(MaterialPageRoute(
           builder: (_) => GameOverScreen(
@@ -277,7 +272,7 @@ class _GameplayScreenState extends State<GameplayScreen> {
                                 color: Colors.white,
                                 shadows: const [Shadow(
                                   color: GameConstants.goldColor,
-                                  blurRadius: 40,
+                                  blurRadius: 12,
                                 )],
                               ))
                           : Text('GO!',
@@ -288,7 +283,7 @@ class _GameplayScreenState extends State<GameplayScreen> {
                                 color: GameConstants.neonGreen,
                                 shadows: const [Shadow(
                                   color: GameConstants.neonGreen,
-                                  blurRadius: 40,
+                                  blurRadius: 12,
                                 )],
                               )),
                       ),
