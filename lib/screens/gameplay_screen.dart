@@ -72,6 +72,9 @@ class _GameplayScreenState extends State<GameplayScreen> {
       // Unlock one ahead so the player can continue from where they left off
       StorageManager.instance.saveUnlockedLevel(level + 1);
 
+      // Show interstitial on every win — main revenue trigger
+      AdManager.instance.showInterstitialAd();
+
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (!mounted) return;
         setState(() {

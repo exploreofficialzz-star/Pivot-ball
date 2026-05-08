@@ -1,14 +1,11 @@
 import 'package:flame_audio/flame_audio.dart';
 
-/// AudioManager — continuous BGM + clean SFX with debounce
+/// AudioManager — AudioPool for SFX (prevents sound stopping at high levels)
 ///
-/// Design decisions:
-///  • BGM runs through ALL screens — never call stopMusic() on screen enter.
-///    Use pauseMusic() / resumeMusic() only for the pause overlay.
-///  • SFX have a per-sound cooldown (200 ms) so rapid level changes at high
-///    levels can't stack dozens of overlapping audio players.
-///  • BGM auto-resumes if the app comes back from background (handled by
-///    FlameAudio.bgm lifecycle observer set up in initialize()).
+/// Root cause of SFX stopping: FlameAudio.play() creates a NEW AudioPlayer
+/// each call. After minutes of play, dozens pile up and overwhelm the audio
+/// subsystem. Fix: FlameAudio.createPool() creates a fixed set of players
+/// that are reused in rotation — memory stays bounded forever.
 class AudioManager {
   static final AudioManager _instance = AudioManager._internal();
   static AudioManager get instance => _instance;
@@ -18,59 +15,81 @@ class AudioManager {
   bool _soundEnabled = true;
   bool _musicEnabled = true;
 
-  // Per-sound cooldown — prevents overlap at high game speeds
+  // Audio pools — fixed player count, cycled on each play call
+  AudioPool? _clickPool;
+  AudioPool? _winPool;
+  AudioPool? _losePool;
+  AudioPool? _rollPool;
+
+  // Per-sound cooldown guard (ms) — prevents double-fire on rapid events
   final Map<String, DateTime> _lastPlayed = {};
-  static const _sfxCooldown = Duration(milliseconds: 200);
+  static const _cooldown = Duration(milliseconds: 180);
 
   // -------------------------------------------------------------------------
-  // Init
+  // Initialize
   // -------------------------------------------------------------------------
   Future<void> initialize() async {
     if (_bgmReady) return;
+
+    // BGM lifecycle observer — must be called before bgm.play()
     try {
-      FlameAudio.bgm.initialize(); // registers lifecycle observer
+      FlameAudio.bgm.initialize();
       _bgmReady = true;
     } catch (_) {}
+
+    // Build SFX pools — 3 concurrent players per short sound, 2 for longer
+    try {
+      _clickPool = await FlameAudio.createPool('click.mp3', maxPlayers: 4);
+      _winPool   = await FlameAudio.createPool('win.mp3',   maxPlayers: 2);
+      _losePool  = await FlameAudio.createPool('lose.mp3',  maxPlayers: 2);
+      _rollPool  = await FlameAudio.createPool('roll.mp3',  maxPlayers: 4);
+    } catch (_) {
+      // Pools unavailable — SFX silently skipped, game still works
+    }
   }
 
   // -------------------------------------------------------------------------
-  // SFX — fire-and-forget, with cooldown guard
+  // SFX
   // -------------------------------------------------------------------------
-  void _playSfx(String file, double volume) {
-    if (!_soundEnabled) return;
+  bool _canPlay(String key) {
     final now  = DateTime.now();
-    final last = _lastPlayed[file];
-    if (last != null && now.difference(last) < _sfxCooldown) return;
-    _lastPlayed[file] = now;
-    try { FlameAudio.play(file, volume: volume); } catch (_) {}
+    final last = _lastPlayed[key];
+    if (last != null && now.difference(last) < _cooldown) return false;
+    _lastPlayed[key] = now;
+    return true;
   }
 
-  void playClick() => _playSfx('click.mp3', 0.5);
-  void playWin()   => _playSfx('win.mp3',   0.8);
-  void playLose()  => _playSfx('lose.mp3',  0.7);
-  void playRoll()  => _playSfx('roll.mp3',  0.3);
+  void playClick() {
+    if (!_soundEnabled || !_canPlay('click') || _clickPool == null) return;
+    try { _clickPool!.start(volume: 0.5); } catch (_) {}
+  }
+
+  void playWin() {
+    if (!_soundEnabled || !_canPlay('win') || _winPool == null) return;
+    try { _winPool!.start(volume: 0.8); } catch (_) {}
+  }
+
+  void playLose() {
+    if (!_soundEnabled || !_canPlay('lose') || _losePool == null) return;
+    try { _losePool!.start(volume: 0.7); } catch (_) {}
+  }
+
+  void playRoll() {
+    if (!_soundEnabled || !_canPlay('roll') || _rollPool == null) return;
+    try { _rollPool!.start(volume: 0.25); } catch (_) {}
+  }
 
   // -------------------------------------------------------------------------
-  // BGM — continuous across all screens
-  // Call startMusic() once at app start; never stop it except on settings
+  // BGM
   // -------------------------------------------------------------------------
   Future<void> startMusic() async {
     if (!_musicEnabled) return;
     if (!_bgmReady) await initialize();
-    try {
-      // bgm.play() is idempotent — safe to call even if already playing
-      await FlameAudio.bgm.play('bgm.mp3', volume: 0.35);
-    } catch (_) {}
+    try { await FlameAudio.bgm.play('bgm.mp3', volume: 0.35); } catch (_) {}
   }
 
-  void stopMusic() {
-    try { FlameAudio.bgm.stop(); } catch (_) {}
-  }
-
-  void pauseMusic() {
-    try { FlameAudio.bgm.pause(); } catch (_) {}
-  }
-
+  void stopMusic()          { try { FlameAudio.bgm.stop();   } catch (_) {} }
+  void pauseMusic()         { try { FlameAudio.bgm.pause();  } catch (_) {} }
   Future<void> resumeMusic() async {
     if (!_musicEnabled) return;
     try { await FlameAudio.bgm.resume(); } catch (_) {}

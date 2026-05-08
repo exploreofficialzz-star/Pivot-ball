@@ -39,7 +39,7 @@ class _GameOverScreenState extends State<GameOverScreen>
   @override
   void initState() {
     super.initState();
-    AudioManager.instance.startMusic();
+    AudioManager.instance.resumeMusic();
     
     _checkHighScore();
     
@@ -447,7 +447,7 @@ class _GameOverScreenState extends State<GameOverScreen>
                         const SizedBox(height: 20),
                         
                         // Banner ad
-                        AdManager.instance.buildBannerAd(),
+                        AdManager.instance.buildBannerAd(showNudge: true),
                         
                         const SizedBox(height: 10),
                       ],

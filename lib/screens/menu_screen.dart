@@ -24,7 +24,7 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    AudioManager.instance.resumeMusic(); // resume — don't restart from beginning
+    AudioManager.instance.resumeMusic();
     
     _animController = AnimationController(
       vsync: this,
@@ -87,6 +87,12 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
             ),
           ),
           
+          // Fixed banner at very bottom — always visible
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: AdManager.instance.buildBannerAd(showNudge: true),
+          ),
+
           // Dark overlay
           Positioned.fill(
             child: Container(
@@ -247,10 +253,7 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                             ],
                           ),
                           
-                          const SizedBox(height: 20),
-                          
-                          // Banner ad
-                          AdManager.instance.buildBannerAd(showNudge: true),
+                          const SizedBox(height: 80), // space for fixed banner
                           
                           const SizedBox(height: 10),
                         ],

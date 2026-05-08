@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../utils/audio_manager.dart';
 import '../utils/storage_manager.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import '../utils/ad_manager.dart';
 import 'menu_screen.dart';
 import 'no_internet_screen.dart';
 
@@ -16,40 +17,41 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeIn;
-  late Animation<double> _scale;
+  late AnimationController _ctrl;
+  late Animation<double>   _fade;
+  late Animation<double>   _scale;
+  late Animation<double>   _slideUp;
 
   @override
   void initState() {
     super.initState();
-
-    _controller = AnimationController(
+    _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 2200),
     );
 
-    _fadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _fade = CurvedAnimation(
+      parent: _ctrl,
+      curve: const Interval(0.0, 0.45, curve: Curves.easeIn),
+    );
+    _scale = Tween<double>(begin: 0.6, end: 1.0).animate(
       CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeOutBack),
+      ),
+    );
+    _slideUp = Tween<double>(begin: 40, end: 0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.1, 0.6, curve: Curves.easeOut),
       ),
     );
 
-    _scale = Tween<double>(begin: 0.5, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.6, curve: Curves.elasticOut),
-      ),
-    );
-
+    _ctrl.forward();
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
-    _controller.forward();
-
-    // Storage must complete — it's fast and needed before menu
     await StorageManager.instance.initialize();
 
     final soundEnabled = StorageManager.instance.getSoundEnabled();
@@ -57,145 +59,165 @@ class _SplashScreenState extends State<SplashScreen>
     AudioManager.instance.setSoundEnabled(soundEnabled);
     AudioManager.instance.setMusicEnabled(musicEnabled);
 
-    // BGM already initialized in main() — just start playing
-    if (AudioManager.instance.musicEnabled) {
-      AudioManager.instance.startMusic();
-    }
+    // Init audio pools + BGM observer
+    await AudioManager.instance.initialize();
 
-    // Show splash for 3 seconds then go to menu regardless
-    await Future.delayed(const Duration(milliseconds: 3000));
+    // Start BGM right from splash
+    if (musicEnabled) AudioManager.instance.startMusic();
+
+    // Let splash animation breathe — minimum 2.8 s
+    await Future.delayed(const Duration(milliseconds: 2800));
 
     if (!mounted) return;
 
-    // Network gate — game is ad-supported, internet required
-    Widget destination = const MenuScreen();
+    // ── Network gate ────────────────────────────────────────────────────────
+    bool online = true;
     try {
-      final result = await Connectivity().checkConnectivity();
-      final online = result.any((r) => r != ConnectivityResult.none);
-      if (!online) destination = const NoInternetScreen();
+      final result = await Connectivity().checkConnectivity()
+          .timeout(const Duration(seconds: 3));
+      online = result.any((r) => r != ConnectivityResult.none);
     } catch (_) {
-      destination = const NoInternetScreen();
+      online = false;
     }
 
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => destination,
-          transitionsBuilder: (context, anim, secondaryAnimation, child) =>
-              FadeTransition(opacity: anim, child: child),
-          transitionDuration: const Duration(milliseconds: 800),
-        ),
-      );
-    }
+    // Start ad loading in background only when online
+    if (online) AdManager.instance.initialize();
+
+    if (!mounted) return;
+
+    final destination = online ? const MenuScreen() : const NoInternetScreen();
+
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => destination,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOut,
+            ),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 700),
+      ),
+    );
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final iconSize  = size.width * 0.28;
+    final titleSize = size.width * 0.09;
+    final subSize   = size.width * 0.030;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background gradient
+          // Radial background
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: RadialGradient(
-                center: const Alignment(0.0, -0.3),
-                radius: 1.2,
-                colors: [
-                  GameConstants.darkGold.withOpacity(0.3),
-                  Colors.black,
-                ],
+                center: Alignment(0.0, -0.25),
+                radius: 1.1,
+                colors: [Color(0xFF2A1500), Colors.black],
               ),
             ),
           ),
 
-          // Animated content
+          // Main content
           Center(
             child: AnimatedBuilder(
-              animation: _controller,
+              animation: _ctrl,
               builder: (context, child) {
                 return FadeTransition(
-                  opacity: _fadeIn,
-                  child: ScaleTransition(
-                    scale: _scale,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // App icon
-                        Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [
-                              BoxShadow(
-                                color: GameConstants.goldColor.withOpacity(0.4),
-                                blurRadius: 30,
-                                spreadRadius: 5,
+                  opacity: _fade,
+                  child: Transform.translate(
+                    offset: Offset(0, _slideUp.value),
+                    child: Transform.scale(
+                      scale: _scale.value,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // App icon
+                          Container(
+                            width:  iconSize,
+                            height: iconSize,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(iconSize * 0.22),
+                              boxShadow: [
+                                BoxShadow(
+                                  color:       GameConstants.goldColor.withOpacity(0.45),
+                                  blurRadius:  iconSize * 0.5,
+                                  spreadRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(iconSize * 0.22),
+                              child: Image.asset(
+                                'assets/images/app_icon.png',
+                                fit: BoxFit.cover,
                               ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: Image.asset(
-                              'assets/images/app_icon.png',
-                              fit: BoxFit.cover,
                             ),
                           ),
-                        ),
 
-                        const SizedBox(height: 30),
+                          SizedBox(height: size.height * 0.035),
 
-                        // Game title
-                        const Text(
-                          GameConstants.appName,
-                          style: TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: GameConstants.goldColor,
-                            letterSpacing: 4,
-                            shadows: [
-                              Shadow(
-                                color: GameConstants.goldColor,
-                                blurRadius: 20,
+                          // Title — FittedBox prevents overflow on small phones
+                          FittedBox(
+                            child: Text(
+                              GameConstants.appName,
+                              style: TextStyle(
+                                fontSize:   titleSize,
+                                fontWeight: FontWeight.bold,
+                                color:      GameConstants.goldColor,
+                                letterSpacing: 4,
+                                shadows: const [
+                                  Shadow(
+                                    color:      GameConstants.goldColor,
+                                    blurRadius: 24,
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // Subtitle
-                        Text(
-                          GameConstants.appSubtitle.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.white.withOpacity(0.6),
-                            letterSpacing: 6,
-                          ),
-                        ),
-
-                        const SizedBox(height: 60),
-
-                        // Loading indicator
-                        SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              GameConstants.goldColor.withOpacity(0.8),
                             ),
                           ),
-                        ),
-                      ],
+
+                          SizedBox(height: size.height * 0.008),
+
+                          // Subtitle
+                          Text(
+                            GameConstants.appSubtitle.toUpperCase(),
+                            style: TextStyle(
+                              fontSize:    subSize,
+                              color:       Colors.white.withOpacity(0.55),
+                              letterSpacing: 5,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+
+                          SizedBox(height: size.height * 0.07),
+
+                          // Spinner
+                          SizedBox(
+                            width: 36, height: 36,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                GameConstants.goldColor.withOpacity(0.75),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -203,33 +225,27 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
 
-          // Company credit at bottom
+          // Company tag — bottom
           Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: FadeTransition(
-              opacity: _fadeIn,
-              child: Center(
+            bottom: size.height * 0.05,
+            left: 0, right: 0,
+            child: AnimatedBuilder(
+              animation: _fade,
+              builder: (context, child) => FadeTransition(
+                opacity: _fade,
                 child: Column(
                   children: [
-                    Text(
-                      'by',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.4),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      GameConstants.companyName,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: GameConstants.goldColor.withOpacity(0.8),
-                        letterSpacing: 3,
-                      ),
-                    ),
+                    Text('by', style: TextStyle(
+                      fontSize: size.width * 0.028,
+                      color:    Colors.white.withOpacity(0.35),
+                    )),
+                    SizedBox(height: size.height * 0.004),
+                    Text(GameConstants.companyName, style: TextStyle(
+                      fontSize:   size.width * 0.05,
+                      fontWeight: FontWeight.bold,
+                      color:      GameConstants.goldColor.withOpacity(0.75),
+                      letterSpacing: 3,
+                    )),
                   ],
                 ),
               ),
