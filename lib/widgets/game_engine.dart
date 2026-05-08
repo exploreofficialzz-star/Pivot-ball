@@ -327,7 +327,7 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
           child: Image.asset('assets/images/game_bg.jpg', fit: BoxFit.cover),
         ),
         Positioned.fill(
-          child: Container(color: Colors.black.withOpacity(0.3)),
+          child: Container(color: Colors.black.withOpacity(0.15)),
         ),
 
         // Holes
@@ -357,9 +357,9 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
                   width: isTarget || isDead ? 3 : 1.5,
                 ),
                 boxShadow: isTarget
-                    ? [BoxShadow(color: GameConstants.neonGreen.withOpacity(0.6), blurRadius: 15, spreadRadius: 5)]
+                    ? [BoxShadow(color: GameConstants.neonGreen.withOpacity(0.3), blurRadius: 8, spreadRadius: 1)]
                     : isDead
-                        ? [BoxShadow(color: GameConstants.neonRed.withOpacity(0.4), blurRadius: 10, spreadRadius: 3)]
+                        ? [BoxShadow(color: GameConstants.neonRed.withOpacity(0.2), blurRadius: 6, spreadRadius: 1)]
                         : null,
               ),
               child: Center(
@@ -403,7 +403,7 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
                 stops:  [0.0, 0.3, 1.0],
               ),
               boxShadow: [
-                BoxShadow(color: Colors.white.withOpacity(0.4), blurRadius: 8, spreadRadius: 2),
+                BoxShadow(color: Colors.white.withOpacity(0.18), blurRadius: 4, spreadRadius: 0),
               ],
             ),
           ),
@@ -418,10 +418,10 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _hud('LEVEL ${widget.levelData.level}',
-                   GameConstants.goldColor.withOpacity(0.5), GameConstants.goldColor, 16),
+                   GameConstants.goldColor.withOpacity(0.25), GameConstants.goldColor, 16),
               _timerHud(),
               _hud('$_score',
-                   GameConstants.neonBlue.withOpacity(0.5), GameConstants.neonBlue, 18),
+                   GameConstants.neonBlue.withOpacity(0.25), GameConstants.neonBlue, 18),
             ],
           ),
         ),
@@ -476,8 +476,8 @@ class BarPainter extends CustomPainter {
     final glowPaint = Paint()
       ..strokeWidth = GameConstants.barHeight + 10
       ..strokeCap   = StrokeCap.round
-      ..color       = color.withOpacity(0.3)
-      ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 10);
+      ..color       = color.withOpacity(0.12)
+      ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 5);
 
     final barPaint = Paint()
       ..strokeWidth = GameConstants.barHeight
