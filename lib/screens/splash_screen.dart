@@ -99,7 +99,7 @@ class _SplashScreenState extends State<SplashScreen>
             child: child,
           );
         },
-        transitionDuration: const Duration(milliseconds: 700),
+        transitionDuration: const Duration(milliseconds: 350),
       ),
     );
   }
@@ -155,9 +155,9 @@ class _SplashScreenState extends State<SplashScreen>
                               borderRadius: BorderRadius.circular(iconSize * 0.22),
                               boxShadow: [
                                 BoxShadow(
-                                  color:       GameConstants.goldColor.withOpacity(0.45),
-                                  blurRadius:  iconSize * 0.5,
-                                  spreadRadius: 4,
+                                  color:       GameConstants.goldColor.withOpacity(0.18),
+                                  blurRadius:  iconSize * 0.2,
+                                  spreadRadius: 1,
                                 ),
                               ],
                             ),
@@ -184,7 +184,7 @@ class _SplashScreenState extends State<SplashScreen>
                                 shadows: const [
                                   Shadow(
                                     color:      GameConstants.goldColor,
-                                    blurRadius: 24,
+                                    blurRadius: 8,
                                   ),
                                 ],
                               ),
@@ -212,7 +212,7 @@ class _SplashScreenState extends State<SplashScreen>
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                GameConstants.goldColor.withOpacity(0.75),
+                                GameConstants.goldColor.withOpacity(0.55),
                               ),
                             ),
                           ),
@@ -243,7 +243,7 @@ class _SplashScreenState extends State<SplashScreen>
                     Text(GameConstants.companyName, style: TextStyle(
                       fontSize:   size.width * 0.05,
                       fontWeight: FontWeight.bold,
-                      color:      GameConstants.goldColor.withOpacity(0.75),
+                      color:      GameConstants.goldColor.withOpacity(0.55),
                       letterSpacing: 3,
                     )),
                   ],

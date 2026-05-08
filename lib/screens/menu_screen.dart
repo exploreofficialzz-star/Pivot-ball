@@ -101,9 +101,9 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.4),
-                    Colors.black.withOpacity(0.7),
-                    Colors.black.withOpacity(0.9),
+                    Colors.black.withOpacity(0.25),
+                    Colors.black.withOpacity(0.55),
+                    Colors.black.withOpacity(0.8),
                   ],
                 ),
               ),
@@ -132,9 +132,9 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: GameConstants.goldColor.withOpacity(0.5),
-                                  blurRadius: 25,
-                                  spreadRadius: 5,
+                                  color: GameConstants.goldColor.withOpacity(0.2),
+                                  blurRadius: 10,
+                                  spreadRadius: 1,
                                 ),
                               ],
                             ),
@@ -159,7 +159,7 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                               shadows: [
                                 Shadow(
                                   color: GameConstants.goldColor,
-                                  blurRadius: 20,
+                                  blurRadius: 8,
                                 ),
                                 Shadow(
                                   color: Colors.black,
@@ -304,9 +304,9 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.4),
-              blurRadius: 15,
-              spreadRadius: 2,
+              color: color.withOpacity(0.15),
+              blurRadius: 6,
+              spreadRadius: 0,
             ),
           ],
           border: Border.all(
