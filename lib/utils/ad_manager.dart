@@ -6,7 +6,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 // ---------------------------------------------------------------------------
 // Ad unit IDs — injected at build time via --dart-define.
-// Google's official test IDs are the fallback (work on any device, no setup).
+// Google official test IDs are the fallback (work on any device).
 // ---------------------------------------------------------------------------
 const _kTestBannerAndroid       = 'ca-app-pub-3940256099942544/6300978111';
 const _kTestBannerIos           = 'ca-app-pub-3940256099942544/2934735716';
@@ -28,49 +28,44 @@ const _rewardedAndroid =
 const _rewardedIos =
     String.fromEnvironment('ADMOB_REWARDED_IOS',         defaultValue: _kTestRewardedIos);
 
-// ---------------------------------------------------------------------------
-// AdManager — network-aware, aggressive but respectful ad loading
-// ---------------------------------------------------------------------------
 class AdManager {
   static final AdManager _instance = AdManager._internal();
   static AdManager get instance => _instance;
   AdManager._internal();
 
-  // State
-  bool _initialized       = false;
-  bool _hasNetwork        = false;
-  bool _adBlocked         = false; // suspected ad-blocker / no fill
-  int  _consecutiveFails  = 0;
-  int  _gamesSinceAd      = 0;     // show interstitial every 2 games
+  bool _sdkReady       = false; // MobileAds.initialize() completed
+  bool _hasNetwork     = true;  // optimistic default
+  bool _adBlocked      = false;
+  int  _consecutiveFails = 0;
 
   InterstitialAd? _interstitialAd;
   RewardedAd?     _rewardedAd;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
-  Timer?          _retryTimer;
+  Timer? _retryTimer;
+
+  // Notifier so BannerAdWidget can rebuild when SDK becomes ready
+  final ValueNotifier<bool> sdkReadyNotifier = ValueNotifier(false);
 
   // =========================================================================
-  // INIT
+  // INIT — call once from main(), without await
   // =========================================================================
   Future<void> initialize() async {
-    if (_initialized) return;
+    if (_sdkReady) return;
 
-    // 1. Check network first
+    // 1. Quick network check (don't block ad loading on result)
     _hasNetwork = await _checkNetwork();
 
-    // 2. Listen for connectivity changes — reload ads when back online
+    // 2. Connectivity listener — reload failed ads when back online
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
       final online = results.any((r) => r != ConnectivityResult.none);
-      if (online && !_hasNetwork) {
-        _hasNetwork = true;
-        _adBlocked  = false;
-        _consecutiveFails = 0;
-        _loadInterstitialAd();
-        _loadRewardedAd();
-      }
       _hasNetwork = online;
+      if (online && _sdkReady) {
+        if (_interstitialAd == null) _loadInterstitialAd();
+        if (_rewardedAd == null)     _loadRewardedAd();
+      }
     });
 
-    // 3. Initialize AdMob SDK — timeout safety
+    // 3. Initialize AdMob SDK
     try {
       await MobileAds.instance.initialize().timeout(
         const Duration(seconds: 10),
@@ -78,21 +73,17 @@ class AdManager {
       );
     } catch (_) {}
 
-    _initialized = true;
+    _sdkReady = true;
+    sdkReadyNotifier.value = true; // triggers BannerAdWidget rebuilds
 
-    // 4. Pre-load both ad types immediately
-    if (_hasNetwork) {
-      _loadInterstitialAd();
-      _loadRewardedAd();
-    }
+    // 4. Load ads immediately — let AdMob handle its own network errors
+    _loadInterstitialAd();
+    _loadRewardedAd();
 
-    // 5. Periodic retry every 45 s if ads haven't loaded
-    _retryTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
-      _hasNetwork = await _checkNetwork();
-      if (_hasNetwork) {
-        if (_interstitialAd == null) _loadInterstitialAd();
-        if (_rewardedAd == null)     _loadRewardedAd();
-      }
+    // 5. Retry every 45s for any unloaded ads
+    _retryTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (_interstitialAd == null) _loadInterstitialAd();
+      if (_rewardedAd == null)     _loadRewardedAd();
     });
   }
 
@@ -101,10 +92,11 @@ class AdManager {
   // =========================================================================
   Future<bool> _checkNetwork() async {
     try {
-      final result = await Connectivity().checkConnectivity();
+      final result = await Connectivity().checkConnectivity()
+          .timeout(const Duration(seconds: 3));
       return result.any((r) => r != ConnectivityResult.none);
     } catch (_) {
-      return false;
+      return true; // assume online if check fails
     }
   }
 
@@ -125,7 +117,7 @@ class AdManager {
   // INTERSTITIAL
   // =========================================================================
   void _loadInterstitialAd() {
-    if (!_initialized || !_hasNetwork || _adBlocked) return;
+    if (!_sdkReady) return;
     InterstitialAd.load(
       adUnitId: interstitialAdUnitId,
       request: const AdRequest(),
@@ -138,31 +130,34 @@ class AdManager {
         },
         onAdFailedToLoad: (error) {
           _interstitialAd = null;
-          _handleAdFailure();
+          _trackFailure();
+          // Retry after 15s on failure
+          Future.delayed(const Duration(seconds: 15), () {
+            if (_interstitialAd == null && _sdkReady) _loadInterstitialAd();
+          });
         },
       ),
     );
   }
 
-  /// Call after every game-over. Shows every 2nd game-over for better revenue.
+  /// Show interstitial ad. Call on every game-over.
+  /// If not loaded yet, queues load for next game-over automatically.
   void showInterstitialAd() {
-    if (!_initialized || !_hasNetwork) return;
-    _gamesSinceAd++;
-    if (_gamesSinceAd < 2) return; // show every 2 game-overs
+    if (!_sdkReady) return;
 
     if (_interstitialAd == null) {
-      _loadInterstitialAd(); // reload for next time
+      // Not ready — reload so next game-over will have one
+      _loadInterstitialAd();
       return;
     }
 
-    _gamesSinceAd = 0;
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         _interstitialAd = null;
-        _loadInterstitialAd(); // preload next immediately
+        _loadInterstitialAd(); // immediately queue next
       },
-      onAdFailedToShowFullScreenContent: (ad, _) {
+      onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         _interstitialAd = null;
         _loadInterstitialAd();
@@ -176,7 +171,7 @@ class AdManager {
   // REWARDED
   // =========================================================================
   void _loadRewardedAd() {
-    if (!_initialized || !_hasNetwork || _adBlocked) return;
+    if (!_sdkReady) return;
     RewardedAd.load(
       adUnitId: rewardedAdUnitId,
       request: const AdRequest(),
@@ -185,9 +180,12 @@ class AdManager {
           _rewardedAd = ad;
           _consecutiveFails = 0;
         },
-        onAdFailedToLoad: (_) {
+        onAdFailedToLoad: (error) {
           _rewardedAd = null;
-          _handleAdFailure();
+          _trackFailure();
+          Future.delayed(const Duration(seconds: 15), () {
+            if (_rewardedAd == null && _sdkReady) _loadRewardedAd();
+          });
         },
       ),
     );
@@ -196,7 +194,7 @@ class AdManager {
   bool get rewardedAdReady => _rewardedAd != null;
 
   Future<bool> showRewardedAd() async {
-    if (!_initialized || !_hasNetwork || _rewardedAd == null) return false;
+    if (!_sdkReady || _rewardedAd == null) return false;
     final completer = Completer<bool>();
 
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
@@ -206,16 +204,15 @@ class AdManager {
         _loadRewardedAd();
         if (!completer.isCompleted) completer.complete(false);
       },
-      onAdFailedToShowFullScreenContent: (ad, _) {
+      onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         _rewardedAd = null;
         _loadRewardedAd();
         if (!completer.isCompleted) completer.complete(false);
       },
     );
-
     _rewardedAd!.show(
-      onUserEarnedReward: (_, reward) {
+      onUserEarnedReward: (ad, reward) {
         if (!completer.isCompleted) completer.complete(true);
       },
     );
@@ -224,92 +221,68 @@ class AdManager {
   }
 
   // =========================================================================
-  // BANNER
+  // BANNER — always returns a widget; never blocked by _sdkReady
+  // BannerAdWidget listens to sdkReadyNotifier and loads when SDK is ready
   // =========================================================================
-  /// Returns a live banner ad widget, or a "support us" nudge if no network/
-  /// ads are blocked, or empty if totally unavailable.
   Widget buildBannerAd({bool showNudge = false}) {
-    if (!_initialized) return const SizedBox.shrink();
-
-    if (!_hasNetwork) {
-      return showNudge ? _noNetworkNudge() : const SizedBox.shrink();
-    }
-
-    if (_adBlocked) {
-      return showNudge ? _adBlockedNudge() : const SizedBox.shrink();
-    }
-
+    if (!_hasNetwork && showNudge) return _noNetworkNudge();
+    if (_adBlocked  && showNudge) return _adBlockedNudge();
+    // Always return BannerAdWidget — it handles its own SDK-ready wait
     return BannerAdWidget(
-      adUnitId:   bannerAdUnitId,
-      onFailed:   _handleAdFailure,
+      adUnitId: bannerAdUnitId,
+      onFailed: _trackFailure,
     );
   }
 
   // =========================================================================
-  // FAILURE TRACKING & AD-BLOCK DETECTION
+  // FAILURE TRACKING
   // =========================================================================
-  void _handleAdFailure() {
+  void _trackFailure() {
     _consecutiveFails++;
-    // After 4 consecutive failures, suspect ad blocker / no fill
-    if (_consecutiveFails >= 4) {
-      _adBlocked = true;
-    }
+    if (_consecutiveFails >= 5) _adBlocked = true;
   }
 
   // =========================================================================
-  // NUDGE WIDGETS — shown when ads can't load
+  // NUDGE WIDGETS
   // =========================================================================
-  Widget _noNetworkNudge() {
-    return Container(
-      height: 50,
-      color: Colors.black87,
-      child: Center(
-        child: Text(
-          '📶  Connect to internet to support us with ads',
-          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 10),
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
+  Widget _noNetworkNudge() => Container(
+    height: 50, color: Colors.black,
+    child: Center(child: Text(
+      '📶  Connect to internet to support us with free ads',
+      style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 9),
+      textAlign: TextAlign.center,
+    )),
+  );
 
-  Widget _adBlockedNudge() {
-    return Container(
-      height: 50,
-      color: Colors.black87,
-      child: Center(
-        child: Text(
-          '❤️  This game is free — please disable your ad blocker to support us',
-          style: TextStyle(color: Colors.amber.withOpacity(0.7), fontSize: 9),
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
+  Widget _adBlockedNudge() => Container(
+    height: 50, color: Colors.black,
+    child: Center(child: Text(
+      '❤️  Please disable your ad blocker — this game is free',
+      style: TextStyle(color: Colors.amber.withOpacity(0.6), fontSize: 9),
+      textAlign: TextAlign.center,
+    )),
+  );
 
-  // =========================================================================
-  // CLEANUP
-  // =========================================================================
   void dispose() {
     _connectivitySub?.cancel();
     _retryTimer?.cancel();
     _interstitialAd?.dispose();
     _rewardedAd?.dispose();
+    sdkReadyNotifier.dispose();
   }
 }
 
 // ---------------------------------------------------------------------------
-// BannerAdWidget — retries up to 3 times with exponential back-off
+// BannerAdWidget
+// - Listens to AdManager.sdkReadyNotifier so it loads the moment SDK is ready
+// - Retries with exponential back-off (3s → 8s → 20s, max 3 retries)
+// - Shows stable 50px placeholder while loading so layout doesn't jump
 // ---------------------------------------------------------------------------
 class BannerAdWidget extends StatefulWidget {
   final String adUnitId;
   final VoidCallback? onFailed;
 
-  const BannerAdWidget({
-    super.key,
-    required this.adUnitId,
-    this.onFailed,
-  });
+  const BannerAdWidget({super.key, required this.adUnitId, this.onFailed});
 
   @override
   State<BannerAdWidget> createState() => _BannerAdWidgetState();
@@ -317,13 +290,23 @@ class BannerAdWidget extends StatefulWidget {
 
 class _BannerAdWidgetState extends State<BannerAdWidget> {
   BannerAd? _bannerAd;
-  bool _loaded    = false;
-  int  _attempts  = 0;
+  bool _loaded   = false;
+  int  _attempts = 0;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    // If SDK is already ready, load now; otherwise wait for it
+    if (AdManager.instance.sdkReadyNotifier.value) {
+      _load();
+    } else {
+      AdManager.instance.sdkReadyNotifier.addListener(_onSdkReady);
+    }
+  }
+
+  void _onSdkReady() {
+    AdManager.instance.sdkReadyNotifier.removeListener(_onSdkReady);
+    if (mounted) _load();
   }
 
   void _load() {
@@ -340,8 +323,6 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
           ad.dispose();
           _bannerAd = null;
           widget.onFailed?.call();
-
-          // Exponential back-off: 3 s → 8 s → 20 s (max 3 retries)
           if (_attempts < 3 && mounted) {
             final delay = [3, 8, 20][_attempts];
             _attempts++;
@@ -357,28 +338,29 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_loaded || _bannerAd == null) {
-      // Placeholder keeps layout stable while ad loads
-      return Container(
-        height: 50,
-        color: Colors.black,
-        child: Center(
-          child: Text(
-            'Loading ad...',
-            style: TextStyle(color: Colors.white.withOpacity(0.2), fontSize: 10),
-          ),
-        ),
+    if (_loaded && _bannerAd != null) {
+      return SizedBox(
+        width:  _bannerAd!.size.width.toDouble(),
+        height: _bannerAd!.size.height.toDouble(),
+        child:  AdWidget(ad: _bannerAd!),
       );
     }
-    return SizedBox(
-      width:  _bannerAd!.size.width.toDouble(),
-      height: _bannerAd!.size.height.toDouble(),
-      child:  AdWidget(ad: _bannerAd!),
+    // Stable placeholder — keeps layout consistent while ad loads
+    return Container(
+      height: 50,
+      color: Colors.black,
+      child: Center(
+        child: Text(
+          'Advertisement',
+          style: TextStyle(color: Colors.white.withOpacity(0.15), fontSize: 9),
+        ),
+      ),
     );
   }
 
   @override
   void dispose() {
+    AdManager.instance.sdkReadyNotifier.removeListener(_onSdkReady);
     _bannerAd?.dispose();
     super.dispose();
   }
