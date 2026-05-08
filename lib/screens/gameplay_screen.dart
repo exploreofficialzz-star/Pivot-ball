@@ -39,27 +39,44 @@ class _GameplayScreenState extends State<GameplayScreen> {
   // Countdown
   // ---------------------------------------------------------------------------
   void _startCountdown() {
+    // Show 3 and play sound simultaneously
     setState(() {
       _showCountdown = true;
       _countdown     = 3;
     });
-    Future.delayed(const Duration(milliseconds: 500), _tickCountdown);
+    // Sound fires after first frame renders so visual and audio are in sync
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AudioManager.instance.playClick();
+    });
+    _scheduleNextTick();
   }
 
-  void _tickCountdown() {
-    if (!mounted) return;
-    if (_countdown > 1) {
-      setState(() => _countdown--);
-      AudioManager.instance.playClick();
-      Future.delayed(const Duration(milliseconds: 800), _tickCountdown);
-    } else {
-      setState(() {
-        _countdown     = 0;
-        _showCountdown = false;
-        _levelData     = LevelData.generate(_currentLevel, MediaQuery.of(context).size);
-      });
-      AudioManager.instance.playClick();
-    }
+  void _scheduleNextTick() {
+    Future.delayed(const Duration(milliseconds: 950), () {
+      if (!mounted) return;
+      if (_countdown > 1) {
+        setState(() => _countdown--);
+        // Play sound after frame renders — keeps visual + audio locked together
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          AudioManager.instance.playClick();
+        });
+        _scheduleNextTick();
+      } else {
+        // "GO!" frame
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          AudioManager.instance.playWin();
+        });
+        setState(() => _countdown = 0);
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (!mounted) return;
+          setState(() {
+            _showCountdown = false;
+            _levelData     = LevelData.generate(
+                _currentLevel, MediaQuery.of(context).size);
+          });
+        });
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -244,20 +261,35 @@ class _GameplayScreenState extends State<GameplayScreen> {
                       ),
                       const SizedBox(height: 20),
                       AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
+                        duration: const Duration(milliseconds: 220),
+                        transitionBuilder: (child, anim) => ScaleTransition(
+                          scale: Tween<double>(begin: 1.5, end: 1.0).animate(
+                            CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+                          ),
+                          child: FadeTransition(opacity: anim, child: child),
+                        ),
                         child: _countdown > 0
                           ? Text('$_countdown',
                               key: ValueKey<int>(_countdown),
-                              style: const TextStyle(
-                                fontSize: 120, fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                shadows: [Shadow(color: GameConstants.goldColor, blurRadius: 40)],
-                              ))
-                          : const Text('GO!',
                               style: TextStyle(
-                                fontSize: 80, fontWeight: FontWeight.bold,
+                                fontSize: size.width * 0.32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                shadows: const [Shadow(
+                                  color: GameConstants.goldColor,
+                                  blurRadius: 40,
+                                )],
+                              ))
+                          : Text('GO!',
+                              key: const ValueKey<String>('go'),
+                              style: TextStyle(
+                                fontSize: size.width * 0.2,
+                                fontWeight: FontWeight.bold,
                                 color: GameConstants.neonGreen,
-                                shadows: [Shadow(color: GameConstants.neonGreen, blurRadius: 40)],
+                                shadows: const [Shadow(
+                                  color: GameConstants.neonGreen,
+                                  blurRadius: 40,
+                                )],
                               )),
                       ),
                     ],
