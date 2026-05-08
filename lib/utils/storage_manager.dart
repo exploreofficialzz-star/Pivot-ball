@@ -120,4 +120,30 @@ class StorageManager {
     await _prefs?.remove('unlocked_level');
     await _prefs?.remove('leaderboard');
   }
+
+  // ── IAP ───────────────────────────────────────────────────────────────────
+  Future<void> saveAdsRemoved(bool value) async {
+    await initialize();
+    await _prefs?.setBool('ads_removed', value);
+  }
+
+  bool getAdsRemoved() => _prefs?.getBool('ads_removed') ?? false;
+
+  // ── Session tracking ──────────────────────────────────────────────────────
+  Future<void> saveLastPlayedTime() async {
+    await initialize();
+    await _prefs?.setString('last_played', DateTime.now().toIso8601String());
+  }
+
+  DateTime? getLastPlayedTime() {
+    final s = _prefs?.getString('last_played');
+    return s != null ? DateTime.tryParse(s) : null;
+  }
+
+  Future<void> saveCurrentStreak(int streak) async {
+    await initialize();
+    await _prefs?.setInt('streak', streak);
+  }
+
+  int getCurrentStreak() => _prefs?.getInt('streak') ?? 0;
 }
