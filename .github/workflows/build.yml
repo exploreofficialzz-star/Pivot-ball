@@ -48,12 +48,12 @@ jobs:
       - name: Build APK
         run: |
           flutter build apk --release \
-            --dart-define=ADMOB_BANNER_ANDROID=${{ secrets.ADMOB_BANNER_ANDROID }} \
-            --dart-define=ADMOB_BANNER_IOS=${{ secrets.ADMOB_BANNER_IOS }} \
-            --dart-define=ADMOB_INTERSTITIAL_ANDROID=${{ secrets.ADMOB_INTERSTITIAL_ANDROID }} \
-            --dart-define=ADMOB_INTERSTITIAL_IOS=${{ secrets.ADMOB_INTERSTITIAL_IOS }} \
-            --dart-define=ADMOB_REWARDED_ANDROID=${{ secrets.ADMOB_REWARDED_ANDROID }} \
-            --dart-define=ADMOB_REWARDED_IOS=${{ secrets.ADMOB_REWARDED_IOS }}
+            --dart-define=ADMOB_BANNER_ANDROID=${{ secrets.ADMOB_BANNER_ANDROID || 'ca-app-pub-3940256099942544/6300978111' }} \
+            --dart-define=ADMOB_BANNER_IOS=${{ secrets.ADMOB_BANNER_IOS || 'ca-app-pub-3940256099942544/2934735716' }} \
+            --dart-define=ADMOB_INTERSTITIAL_ANDROID=${{ secrets.ADMOB_INTERSTITIAL_ANDROID || 'ca-app-pub-3940256099942544/1033173712' }} \
+            --dart-define=ADMOB_INTERSTITIAL_IOS=${{ secrets.ADMOB_INTERSTITIAL_IOS || 'ca-app-pub-3940256099942544/4411468910' }} \
+            --dart-define=ADMOB_REWARDED_ANDROID=${{ secrets.ADMOB_REWARDED_ANDROID || 'ca-app-pub-3940256099942544/5224354917' }} \
+            --dart-define=ADMOB_REWARDED_IOS=${{ secrets.ADMOB_REWARDED_IOS || 'ca-app-pub-3940256099942544/1712485313' }}
         env:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -63,12 +63,12 @@ jobs:
       - name: Build AAB
         run: |
           flutter build appbundle --release \
-            --dart-define=ADMOB_BANNER_ANDROID=${{ secrets.ADMOB_BANNER_ANDROID }} \
-            --dart-define=ADMOB_BANNER_IOS=${{ secrets.ADMOB_BANNER_IOS }} \
-            --dart-define=ADMOB_INTERSTITIAL_ANDROID=${{ secrets.ADMOB_INTERSTITIAL_ANDROID }} \
-            --dart-define=ADMOB_INTERSTITIAL_IOS=${{ secrets.ADMOB_INTERSTITIAL_IOS }} \
-            --dart-define=ADMOB_REWARDED_ANDROID=${{ secrets.ADMOB_REWARDED_ANDROID }} \
-            --dart-define=ADMOB_REWARDED_IOS=${{ secrets.ADMOB_REWARDED_IOS }}
+            --dart-define=ADMOB_BANNER_ANDROID=${{ secrets.ADMOB_BANNER_ANDROID || 'ca-app-pub-3940256099942544/6300978111' }} \
+            --dart-define=ADMOB_BANNER_IOS=${{ secrets.ADMOB_BANNER_IOS || 'ca-app-pub-3940256099942544/2934735716' }} \
+            --dart-define=ADMOB_INTERSTITIAL_ANDROID=${{ secrets.ADMOB_INTERSTITIAL_ANDROID || 'ca-app-pub-3940256099942544/1033173712' }} \
+            --dart-define=ADMOB_INTERSTITIAL_IOS=${{ secrets.ADMOB_INTERSTITIAL_IOS || 'ca-app-pub-3940256099942544/4411468910' }} \
+            --dart-define=ADMOB_REWARDED_ANDROID=${{ secrets.ADMOB_REWARDED_ANDROID || 'ca-app-pub-3940256099942544/5224354917' }} \
+            --dart-define=ADMOB_REWARDED_IOS=${{ secrets.ADMOB_REWARDED_IOS || 'ca-app-pub-3940256099942544/1712485313' }}
         env:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -128,12 +128,12 @@ jobs:
       - name: Build iOS (no codesign)
         run: |
           flutter build ios --release --no-codesign \
-            --dart-define=ADMOB_BANNER_ANDROID=${{ secrets.ADMOB_BANNER_ANDROID }} \
-            --dart-define=ADMOB_BANNER_IOS=${{ secrets.ADMOB_BANNER_IOS }} \
-            --dart-define=ADMOB_INTERSTITIAL_ANDROID=${{ secrets.ADMOB_INTERSTITIAL_ANDROID }} \
-            --dart-define=ADMOB_INTERSTITIAL_IOS=${{ secrets.ADMOB_INTERSTITIAL_IOS }} \
-            --dart-define=ADMOB_REWARDED_ANDROID=${{ secrets.ADMOB_REWARDED_ANDROID }} \
-            --dart-define=ADMOB_REWARDED_IOS=${{ secrets.ADMOB_REWARDED_IOS }}
+            --dart-define=ADMOB_BANNER_ANDROID=${{ secrets.ADMOB_BANNER_ANDROID || 'ca-app-pub-3940256099942544/6300978111' }} \
+            --dart-define=ADMOB_BANNER_IOS=${{ secrets.ADMOB_BANNER_IOS || 'ca-app-pub-3940256099942544/2934735716' }} \
+            --dart-define=ADMOB_INTERSTITIAL_ANDROID=${{ secrets.ADMOB_INTERSTITIAL_ANDROID || 'ca-app-pub-3940256099942544/1033173712' }} \
+            --dart-define=ADMOB_INTERSTITIAL_IOS=${{ secrets.ADMOB_INTERSTITIAL_IOS || 'ca-app-pub-3940256099942544/4411468910' }} \
+            --dart-define=ADMOB_REWARDED_ANDROID=${{ secrets.ADMOB_REWARDED_ANDROID || 'ca-app-pub-3940256099942544/5224354917' }} \
+            --dart-define=ADMOB_REWARDED_IOS=${{ secrets.ADMOB_REWARDED_IOS || 'ca-app-pub-3940256099942544/1712485313' }}
 
       - name: Create IPA
         run: |
@@ -156,4 +156,3 @@ jobs:
           files: build/ios/iphoneos/PivotBall.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
