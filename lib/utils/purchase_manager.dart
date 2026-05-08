@@ -64,15 +64,15 @@ class PurchaseManager {
   // =========================================================================
   Future<void> buyRemoveAds() async {
     if (!_available || _loading) return;
-    final product = _products.firstWhere(
-      (p) => p.id == removeAdsId,
-      orElse: () => throw Exception('Product not found — check Play Console / App Store'),
+    final ProductDetails? product = _products.cast<ProductDetails?>().firstWhere(
+      (p) => p?.id == removeAdsId,
+      orElse: () => null,
     );
+    if (product == null) return; // product not loaded yet
     _loading = true;
     try {
-      await _iap.buyNonConsumable(
-        purchaseParam: PurchaseParam(productDetails: product),
-      );
+      final param = PurchaseParam(productDetails: product!);
+      await _iap.buyNonConsumable(purchaseParam: param);
     } catch (_) {
       _loading = false;
     }
@@ -110,7 +110,7 @@ class PurchaseManager {
   }
 
   Future<void> _grant(PurchaseDetails purchase) async {
-    if (purchase.productID == removeAdsId) {
+    if (purchase.productID == removeAdsId && purchase.productID.isNotEmpty) {
       _adsRemoved = true;
       adsRemovedNotifier.value = true;
       await StorageManager.instance.saveAdsRemoved(true);

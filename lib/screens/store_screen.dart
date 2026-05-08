@@ -16,7 +16,6 @@ class _StoreScreenState extends State<StoreScreen> {
   @override
   Widget build(BuildContext context) {
     final pm = PurchaseManager.instance;
-    final size = MediaQuery.of(context).size;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -66,7 +65,7 @@ class _StoreScreenState extends State<StoreScreen> {
                       // ── REMOVE ADS ────────────────────────────────────────
                       ValueListenableBuilder<bool>(
                         valueListenable: pm.adsRemovedNotifier,
-                        builder: (_, removed, __) => _StoreCard(
+                        builder: (context, removed, child) => _StoreCard(
                           icon: removed ? Icons.block : Icons.ads_click,
                           iconColor: GameConstants.neonGreen,
                           title: removed ? 'ADS REMOVED ✓' : 'REMOVE ALL ADS',
@@ -81,7 +80,7 @@ class _StoreScreenState extends State<StoreScreen> {
                             AudioManager.instance.playClick();
                             setState(() => _loading = true);
                             try { await pm.buyRemoveAds(); } catch (_) {}
-                            setState(() => _loading = false);
+                            if (mounted) setState(() => _loading = false);
                           },
                         ),
                       ),
@@ -93,9 +92,10 @@ class _StoreScreenState extends State<StoreScreen> {
                         child: TextButton(
                           onPressed: () async {
                             AudioManager.instance.playClick();
+                            final messenger = ScaffoldMessenger.of(context);
                             await pm.restorePurchases();
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 const SnackBar(content: Text('Purchases restored')),
                               );
                             }
@@ -152,8 +152,9 @@ class _StoreScreenState extends State<StoreScreen> {
 
   String _price(PurchaseManager pm, String id, String fallback) {
     try {
-      final p = pm.products.firstWhere((p) => p.id == id);
-      return p.price;
+      final p = pm.products.cast<dynamic>().firstWhere(
+        (p) => p.id == id, orElse: () => null);
+      return p?.price ?? fallback;
     } catch (_) { return fallback; }
   }
 }
