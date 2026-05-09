@@ -77,7 +77,7 @@ class _StoreScreenState extends State<StoreScreen> {
                                 ? 'Expires in $days d $hrs h'
                                 : 'No ads for a full week.
 Renew whenever it expires.',
-                            price: active ? 'ACTIVE' : _price(pm, 'pivot_ball_weekly_skip', r'\$2.99'),
+                            price: active ? 'ACTIVE' : _price(pm, 'pivot_ball_weekly_skip', r'$2.99'),
                             buttonLabel: active ? 'ACTIVE' : 'BUY',
                             buttonColor: GameConstants.neonGreen,
                             loading: _loading,
@@ -114,7 +114,6 @@ Renew any day you play.',
                             loading: _loading,
                             onTap: skipActive ? null : () async {
                               AudioManager.instance.playClick();
-                              final messenger = ScaffoldMessenger.of(context);
                               setState(() => _loading = true);
                               try { await pm.buyDailySkip(); } catch (_) {}
                               if (mounted) setState(() => _loading = false);

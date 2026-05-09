@@ -169,10 +169,4 @@ class StorageManager {
     return s != null ? DateTime.tryParse(s) : null;
   }
 
-  // Legacy — kept for compatibility
-  Future<void> saveAdsRemoved(bool value) async {
-    await initialize();
-    await _prefs?.setBool('ads_removed', value);
-  }
-  bool getAdsRemoved() => _prefs?.getBool('ads_removed') ?? false;
 }
