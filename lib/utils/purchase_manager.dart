@@ -9,20 +9,21 @@ class PurchaseManager {
   PurchaseManager._internal();
 
   // ── Product IDs — must match exactly what you create in Play Console / App Store Connect
-  static const String removeAdsId = 'pivot_ball_remove_ads';
+  static const String weeklySkipId   = 'pivot_ball_weekly_skip'; // \$2.99 — 7 days ad-free
+  static const String dailySkipId    = 'pivot_ball_daily_skip'; // $0.99 consumable
 
   final InAppPurchase _iap = InAppPurchase.instance;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
 
   bool _available    = false;
-  bool _adsRemoved   = false;
   bool _loading      = false;
   List<ProductDetails> _products = [];
 
-  // Notifier so UI rebuilds when purchase completes
-  final ValueNotifier<bool> adsRemovedNotifier = ValueNotifier(false);
+  // Notifiers
+  final ValueNotifier<bool> weeklySkipNotifier  = ValueNotifier(false);
+  final ValueNotifier<bool> dailySkipNotifier   = ValueNotifier(false);
 
-  bool get adsRemoved    => _adsRemoved;
+  bool get adsRemoved    => isWeeklySkipActive() || isDailySkipActive();
   bool get storeAvailable => _available;
   bool get loading        => _loading;
   List<ProductDetails> get products => _products;
@@ -32,8 +33,8 @@ class PurchaseManager {
   // =========================================================================
   Future<void> initialize() async {
     // Restore saved purchase state first
-    _adsRemoved = StorageManager.instance.getAdsRemoved();
-    adsRemovedNotifier.value = _adsRemoved;
+    weeklySkipNotifier.value  = isWeeklySkipActive();
+    dailySkipNotifier.value   = isDailySkipActive();
 
     _available = await _iap.isAvailable();
     if (!_available) return;
@@ -54,7 +55,7 @@ class PurchaseManager {
 
   Future<void> _loadProducts() async {
     try {
-      final response = await _iap.queryProductDetails({removeAdsId});
+      final response = await _iap.queryProductDetails({weeklySkipId, dailySkipId});
       _products = response.productDetails;
     } catch (_) {}
   }
@@ -62,21 +63,8 @@ class PurchaseManager {
   // =========================================================================
   // PURCHASE FLOW
   // =========================================================================
-  Future<void> buyRemoveAds() async {
-    if (!_available || _loading) return;
-    final ProductDetails? product = _products.cast<ProductDetails?>().firstWhere(
-      (p) => p?.id == removeAdsId,
-      orElse: () => null,
-    );
-    if (product == null) return; // product not loaded yet
-    _loading = true;
-    try {
-      final param = PurchaseParam(productDetails: product);
-      await _iap.buyNonConsumable(purchaseParam: param);
-    } catch (_) {
-      _loading = false;
-    }
-  }
+  // Legacy — kept for any external calls; now both products are consumables
+  Future<void> buyRemoveAds() => buyWeeklySkip();
 
   Future<void> restorePurchases() async {
     if (!_available) return;
@@ -110,15 +98,72 @@ class PurchaseManager {
   }
 
   Future<void> _grant(PurchaseDetails purchase) async {
-    if (purchase.productID == removeAdsId && purchase.productID.isNotEmpty) {
-      _adsRemoved = true;
-      adsRemovedNotifier.value = true;
-      await StorageManager.instance.saveAdsRemoved(true);
+    if (purchase.productID == weeklySkipId) {
+      await StorageManager.instance.saveWeeklySkipTime();
+      weeklySkipNotifier.value = true;
+    }
+    if (purchase.productID == dailySkipId) {
+      // Consumable — save purchase timestamp, expires in 24 hours
+      await StorageManager.instance.saveDailySkipTime();
+      dailySkipNotifier.value = true;
+    }
+  }
+
+  bool isWeeklySkipActive() {
+    final bought = StorageManager.instance.getWeeklySkipTime();
+    if (bought == null) return false;
+    return DateTime.now().difference(bought).inDays < 7;
+  }
+
+  Duration get weeklySkipRemaining {
+    final bought = StorageManager.instance.getWeeklySkipTime();
+    if (bought == null) return Duration.zero;
+    final remaining = const Duration(days: 7) - DateTime.now().difference(bought);
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  Future<void> buyWeeklySkip() async {
+    if (!_available || _loading) return;
+    final ProductDetails? product = _products.cast<ProductDetails?>().firstWhere(
+      (p) => p?.id == weeklySkipId, orElse: () => null);
+    if (product == null) return;
+    _loading = true;
+    try {
+      await _iap.buyConsumable(purchaseParam: PurchaseParam(productDetails: product));
+    } catch (_) { _loading = false; }
+  }
+
+  // Returns true if user bought a daily skip less than 24 hours ago
+  bool isDailySkipActive() {
+    final bought = StorageManager.instance.getDailySkipTime();
+    if (bought == null) return false;
+    return DateTime.now().difference(bought).inHours < 24;
+  }
+
+  Duration get dailySkipRemaining {
+    final bought = StorageManager.instance.getDailySkipTime();
+    if (bought == null) return Duration.zero;
+    final elapsed = DateTime.now().difference(bought);
+    final remaining = const Duration(hours: 24) - elapsed;
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  Future<void> buyDailySkip() async {
+    if (!_available || _loading) return;
+    final ProductDetails? product = _products.cast<ProductDetails?>().firstWhere(
+      (p) => p?.id == dailySkipId, orElse: () => null);
+    if (product == null) return;
+    _loading = true;
+    try {
+      await _iap.buyConsumable(purchaseParam: PurchaseParam(productDetails: product));
+    } catch (_) {
+      _loading = false;
     }
   }
 
   void dispose() {
     _subscription?.cancel();
-    adsRemovedNotifier.dispose();
+    weeklySkipNotifier.dispose();
+    dailySkipNotifier.dispose();
   }
 }

@@ -234,9 +234,9 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                           
                           // Remove Ads CTA — only shown to non-premium users
                           ValueListenableBuilder<bool>(
-                            valueListenable: PurchaseManager.instance.adsRemovedNotifier,
-                            builder: (context, adsRemoved, child) {
-                              if (adsRemoved) return const SizedBox.shrink();
+                            valueListenable: PurchaseManager.instance.weeklySkipNotifier,
+                            builder: (context, weeklyActive, child) {
+                              if (weeklyActive || PurchaseManager.instance.isDailySkipActive()) return const SizedBox.shrink();
                               return GestureDetector(
                                 onTap: () {
                                   AudioManager.instance.playClick();

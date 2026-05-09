@@ -62,27 +62,65 @@ class _StoreScreenState extends State<StoreScreen> {
                     children: [
                       const SizedBox(height: 16),
 
-                      // ── REMOVE ADS ────────────────────────────────────────
+                      // ── WEEKLY AD SKIP ($2.99 / 7 days) ──────────────────
                       ValueListenableBuilder<bool>(
-                        valueListenable: pm.adsRemovedNotifier,
-                        builder: (context, removed, child) => _StoreCard(
-                          icon: removed ? Icons.block : Icons.ads_click,
-                          iconColor: GameConstants.neonGreen,
-                          title: removed ? 'ADS REMOVED ✓' : 'REMOVE ALL ADS',
-                          subtitle: removed
-                              ? 'Thank you for supporting Pivot Ball!'
-                              : 'One-time purchase — no more interruptions ever',
-                          price: removed ? 'OWNED' : _price(pm, 'pivot_ball_remove_ads', '\$2.99'),
-                          buttonLabel: removed ? 'OWNED' : 'BUY',
-                          buttonColor: removed ? Colors.grey : GameConstants.neonGreen,
-                          loading: _loading,
-                          onTap: removed ? null : () async {
-                            AudioManager.instance.playClick();
-                            setState(() => _loading = true);
-                            try { await pm.buyRemoveAds(); } catch (_) {}
-                            if (mounted) setState(() => _loading = false);
-                          },
-                        ),
+                        valueListenable: pm.weeklySkipNotifier,
+                        builder: (context, active, child) {
+                          final rem = pm.weeklySkipRemaining;
+                          final days = rem.inDays;
+                          final hrs  = rem.inHours % 24;
+                          return _StoreCard(
+                            icon: active ? Icons.event_available : Icons.calendar_today,
+                            iconColor: GameConstants.neonGreen,
+                            title: active ? '7-DAY PASS ACTIVE ✓' : '7-DAY AD-FREE PASS',
+                            subtitle: active
+                                ? 'Expires in $days d $hrs h'
+                                : 'No ads for a full week.
+Renew whenever it expires.',
+                            price: active ? 'ACTIVE' : _price(pm, 'pivot_ball_weekly_skip', r'\$2.99'),
+                            buttonLabel: active ? 'ACTIVE' : 'BUY',
+                            buttonColor: GameConstants.neonGreen,
+                            loading: _loading,
+                            onTap: active ? null : () async {
+                              AudioManager.instance.playClick();
+                              setState(() => _loading = true);
+                              try { await pm.buyWeeklySkip(); } catch (_) {}
+                              if (mounted) setState(() => _loading = false);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ── DAILY AD SKIP ─────────────────────────────────────
+                      ValueListenableBuilder<bool>(
+                        valueListenable: pm.dailySkipNotifier,
+                        builder: (context, skipActive, child) {
+                          final remaining = pm.dailySkipRemaining;
+                          final hh = remaining.inHours.toString().padLeft(2,'0');
+                          final mm = (remaining.inMinutes % 60).toString().padLeft(2,'0');
+                          return _StoreCard(
+                            icon: skipActive ? Icons.timer : Icons.skip_next_rounded,
+                            iconColor: GameConstants.neonBlue,
+                            title: skipActive ? 'AD-FREE TODAY ✓' : 'DAILY AD-FREE PASS',
+                            subtitle: skipActive
+                                ? 'Expires in $hh h $mm min'
+                                : 'Skip ALL ads for 24 hours.
+Renew any day you play.',
+                            price: skipActive ? 'ACTIVE' : _price(pm, 'pivot_ball_daily_skip', r'$0.99'),
+                            buttonLabel: skipActive ? 'ACTIVE' : 'BUY',
+                            buttonColor: GameConstants.neonBlue,
+                            loading: _loading,
+                            onTap: skipActive ? null : () async {
+                              AudioManager.instance.playClick();
+                              final messenger = ScaffoldMessenger.of(context);
+                              setState(() => _loading = true);
+                              try { await pm.buyDailySkip(); } catch (_) {}
+                              if (mounted) setState(() => _loading = false);
+                            },
+                          );
+                        },
                       ),
 
                       const SizedBox(height: 16),

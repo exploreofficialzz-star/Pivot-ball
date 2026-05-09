@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'storage_manager.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -140,16 +141,47 @@ class AdManager {
     );
   }
 
-  /// Show interstitial ad.
-  /// [onDismissed] is called when the ad closes OR if no ad is available —
-  /// so the caller can always continue its flow regardless of ad state.
+  int _actionsSinceAd = 0; // track user actions between ads
+
+  /// Show interstitial ad — compliant with AdMob policy:
+  /// max 1 interstitial per every 2 user actions (level completions).
+  /// [onDismissed] always fires so the caller's flow is never blocked.
+  bool _isPremium() {
+    try {
+      // Legacy permanent removal
+      if (StorageManager.instance.getAdsRemoved()) return true;
+      // Weekly skip — $2.99 for 7 days
+      final weekly = StorageManager.instance.getWeeklySkipTime();
+      if (weekly != null && DateTime.now().difference(weekly).inDays < 7) return true;
+      // Daily skip — $0.99 for 24 hours
+      final daily = StorageManager.instance.getDailySkipTime();
+      if (daily != null && DateTime.now().difference(daily).inHours < 24) return true;
+      return false;
+    } catch (_) { return false; }
+  }
+
   void showInterstitialAd({VoidCallback? onDismissed}) {
+    // Premium users skip the ad immediately
+    if (_isPremium()) {
+      Future.delayed(const Duration(milliseconds: 100), () => onDismissed?.call());
+      return;
+    }
+    _actionsSinceAd++;
+
+    // Game-level completions are natural break points — every level is policy-compliant
+    // Only skip first ever game to not overwhelm new users
+    if (_actionsSinceAd < 1) {
+      Future.delayed(const Duration(milliseconds: 200), () => onDismissed?.call());
+      return;
+    }
+
     if (!_sdkReady || _interstitialAd == null) {
-      _loadInterstitialAd(); // queue for next time
-      // No ad ready — call onDismissed after a short pause so UX feels intentional
+      _loadInterstitialAd();
       Future.delayed(const Duration(milliseconds: 300), () => onDismissed?.call());
       return;
     }
+
+    _actionsSinceAd = 0; // reset counter after showing
 
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) {
@@ -227,6 +259,8 @@ class AdManager {
   // BannerAdWidget listens to sdkReadyNotifier and loads when SDK is ready
   // =========================================================================
   Widget buildBannerAd({bool showNudge = false}) {
+    // Premium users — no ads
+    if (_isPremium()) return const SizedBox.shrink();
     if (!_hasNetwork && showNudge) return _noNetworkNudge();
     if (_adBlocked  && showNudge) return _adBlockedNudge();
     // Always return BannerAdWidget — it handles its own SDK-ready wait

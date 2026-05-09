@@ -146,4 +146,33 @@ class StorageManager {
   }
 
   int getCurrentStreak() => _prefs?.getInt('streak') ?? 0;
+
+  // ── Daily Ad Skip ─────────────────────────────────────────────────────────
+  Future<void> saveDailySkipTime() async {
+    await initialize();
+    await _prefs?.setString('daily_skip_time', DateTime.now().toIso8601String());
+  }
+
+  DateTime? getDailySkipTime() {
+    final s = _prefs?.getString('daily_skip_time');
+    return s != null ? DateTime.tryParse(s) : null;
+  }
+
+  // ── Weekly Ad Skip (7 days) ───────────────────────────────────────────────
+  Future<void> saveWeeklySkipTime() async {
+    await initialize();
+    await _prefs?.setString('weekly_skip_time', DateTime.now().toIso8601String());
+  }
+
+  DateTime? getWeeklySkipTime() {
+    final s = _prefs?.getString('weekly_skip_time');
+    return s != null ? DateTime.tryParse(s) : null;
+  }
+
+  // Legacy — kept for compatibility
+  Future<void> saveAdsRemoved(bool value) async {
+    await initialize();
+    await _prefs?.setBool('ads_removed', value);
+  }
+  bool getAdsRemoved() => _prefs?.getBool('ads_removed') ?? false;
 }
