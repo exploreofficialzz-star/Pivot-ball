@@ -30,8 +30,8 @@ void main() async {
   // 3. IAP — restore purchases silently
   PurchaseManager.instance.initialize();
 
-  // 4. Notifications
-  await NotificationManager.instance.initialize();
+  // 4. Notifications — fire in background, never block app launch
+  NotificationManager.instance.initialize();
 
   runApp(const PivotBallApp());
 }
