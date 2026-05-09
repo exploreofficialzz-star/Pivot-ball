@@ -3,13 +3,9 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 /// NetworkMonitor — watches connectivity for the entire app lifetime.
-/// 
-/// Usage:
-///   await NetworkMonitor.instance.initialize();   // call once in main()
-///   NetworkMonitor.instance.isOnline              // ValueNotifier<bool>
-/// 
-/// The MaterialApp.builder in main.dart reads isOnline and shows an overlay
-/// whenever the device goes offline — regardless of which screen is active.
+///
+/// Call [initialize] once in main(). Then read [isOnline] anywhere.
+/// MaterialApp.builder in main.dart shows an overlay when the device is offline.
 class NetworkMonitor {
   static final NetworkMonitor _instance = NetworkMonitor._();
   static NetworkMonitor get instance => _instance;
@@ -46,4 +42,3 @@ class NetworkMonitor {
     isOnline.dispose();
   }
 }
-
