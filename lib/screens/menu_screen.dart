@@ -6,6 +6,8 @@ import '../utils/storage_manager.dart';
 import '../utils/ad_manager.dart';
 import 'gameplay_screen.dart';
 import 'leaderboard_screen.dart';
+import 'store_screen.dart';
+import '../utils/purchase_manager.dart';
 import 'settings_screen.dart';
 import 'how_to_play_screen.dart';
 
