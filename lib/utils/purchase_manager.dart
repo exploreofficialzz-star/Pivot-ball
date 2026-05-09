@@ -71,7 +71,7 @@ class PurchaseManager {
     if (product == null) return; // product not loaded yet
     _loading = true;
     try {
-      final param = PurchaseParam(productDetails: product!);
+      final param = PurchaseParam(productDetails: product);
       await _iap.buyNonConsumable(purchaseParam: param);
     } catch (_) {
       _loading = false;
