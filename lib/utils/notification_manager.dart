@@ -51,12 +51,19 @@ class NotificationManager {
     await androidPlugin?.createNotificationChannel(_loseCh);
     await androidPlugin?.createNotificationChannel(_streakCh);
 
-    // Request permissions
-    await androidPlugin?.requestNotificationsPermission();
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
+    // Request permissions — wrapped in try/catch so a denied/dismissed
+    // dialog never blocks the app
+    try {
+      await androidPlugin?.requestNotificationsPermission()
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {}
+    try {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true)
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {}
 
     _initialized = true;
 
