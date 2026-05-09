@@ -183,45 +183,6 @@ class _GameplayScreenState extends State<GameplayScreen> {
                 ),
               ),
 
-            // ── +30s Rewarded Ad Button ──────────────────────────────
-            if (!_showCountdown && !_isPaused && !_bonusTimeUsed)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 55,
-                right: 16,
-                child: Builder(builder: (context) {
-                  if (!AdManager.instance.rewardedAdReady) return const SizedBox.shrink();
-                  return GestureDetector(
-                    onTap: () async {
-                      AudioManager.instance.playClick();
-                      final earned = await AdManager.instance.showRewardedAd();
-                      if (earned && mounted) {
-                        _gameKey.currentState?.addBonusTime(30);
-                        setState(() => _bonusTimeUsed = true);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: GameConstants.goldColor.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: GameConstants.goldColor, width: 1.5),
-                        boxShadow: [BoxShadow(
-                          color: GameConstants.goldColor.withOpacity(0.2),
-                          blurRadius: 8,
-                        )],
-                      ),
-                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.play_circle_outline, color: GameConstants.goldColor, size: 14),
-                        SizedBox(width: 4),
-                        Text('+30s', style: TextStyle(
-                          color: GameConstants.goldColor, fontSize: 11,
-                          fontWeight: FontWeight.bold, letterSpacing: 1)),
-                      ]),
-                    ),
-                  );
-                }),
-              ),
-
             // ── Bottom control panel ─────────────────────────────────
             if (!_showCountdown && !_isPaused && _levelData != null)
               Positioned(
@@ -254,8 +215,71 @@ class _GameplayScreenState extends State<GameplayScreen> {
                           onRelease: ()  => _gameKey.currentState?.setLeftInput(0),
                         ),
                       ),
-                      // Center — empty, shows nothing
-                      const Spacer(),
+                      // Center — +30s and SKIP buttons stacked
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // +30s bonus time button
+                            if (!_bonusTimeUsed && AdManager.instance.rewardedAdReady)
+                              GestureDetector(
+                                onTap: () async {
+                                  AudioManager.instance.playClick();
+                                  final earned = await AdManager.instance.showRewardedAd();
+                                  if (earned && mounted) {
+                                    _gameKey.currentState?.addBonusTime(30);
+                                    setState(() => _bonusTimeUsed = true);
+                                  }
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: GameConstants.goldColor.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: GameConstants.goldColor, width: 1.5),
+                                  ),
+                                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Icon(Icons.play_circle_outline, color: GameConstants.goldColor, size: 13),
+                                    SizedBox(width: 4),
+                                    Text('+30s', style: TextStyle(
+                                      color: GameConstants.goldColor, fontSize: 10,
+                                      fontWeight: FontWeight.bold)),
+                                  ]),
+                                ),
+                              ),
+
+                            // Skip level button (level 6+)
+                            if (_currentLevel > 5 && !_skipUsed && AdManager.instance.rewardedAdReady)
+                              GestureDetector(
+                                onTap: () async {
+                                  AudioManager.instance.playClick();
+                                  final earned = await AdManager.instance.showRewardedAd();
+                                  if (earned && mounted) {
+                                    setState(() => _skipUsed = true);
+                                    _onGameEnd(_totalScore, _currentLevel, true);
+                                  }
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: GameConstants.neonBlue.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: GameConstants.neonBlue, width: 1.5),
+                                  ),
+                                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Icon(Icons.skip_next_rounded, color: GameConstants.neonBlue, size: 13),
+                                    SizedBox(width: 4),
+                                    Text('SKIP', style: TextStyle(
+                                      color: GameConstants.neonBlue, fontSize: 10,
+                                      fontWeight: FontWeight.bold)),
+                                  ]),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                       // Right joystick
                       Padding(
                         padding: const EdgeInsets.only(right: 16, bottom: 12),
