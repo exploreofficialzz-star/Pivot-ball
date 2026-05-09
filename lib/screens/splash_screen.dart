@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../utils/network_monitor.dart';
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../utils/audio_manager.dart';
 import '../utils/storage_manager.dart';
+import '../utils/notification_manager.dart';
 import '../utils/ad_manager.dart';
 import 'menu_screen.dart';
 import 'no_internet_screen.dart';
@@ -64,6 +66,8 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Start BGM right from splash
     if (musicEnabled) AudioManager.instance.startMusic();
+    // Refresh streak notification every app open
+    NotificationManager.instance.scheduleStreakAlert();
 
     // Let splash animation breathe — minimum 2.8 s
     await Future.delayed(const Duration(milliseconds: 2800));
@@ -71,20 +75,17 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     // ── Network gate ────────────────────────────────────────────────────────
-    bool online = true;
-    try {
-      final result = await Connectivity().checkConnectivity()
-          .timeout(const Duration(seconds: 3));
-      online = result.any((r) => r != ConnectivityResult.none);
-    } catch (_) {
-      online = false;
-    }
+    // NetworkMonitor already running from main() — just read its state
+    final online = NetworkMonitor.instance.isOnline.value;
 
-    // Start ad loading in background only when online
+    // Start ads only when online
     if (online) AdManager.instance.initialize();
 
     if (!mounted) return;
 
+    // If offline → NoInternetScreen; once user reconnects NetworkMonitor
+    // fires the global overlay automatically — no need to navigate away.
+    // But we still gate the menu here so user can't play without internet.
     final destination = online ? const MenuScreen() : const NoInternetScreen();
 
     Navigator.of(context).pushReplacement(
@@ -92,10 +93,7 @@ class _SplashScreenState extends State<SplashScreen>
         pageBuilder: (context, animation, secondaryAnimation) => destination,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeInOut,
-            ),
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
             child: child,
           );
         },
