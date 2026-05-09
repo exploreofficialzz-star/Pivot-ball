@@ -75,8 +75,7 @@ class _StoreScreenState extends State<StoreScreen> {
                             title: active ? '7-DAY PASS ACTIVE ✓' : '7-DAY AD-FREE PASS',
                             subtitle: active
                                 ? 'Expires in $days d $hrs h'
-                                : 'No ads for a full week.
-Renew whenever it expires.',
+                                : 'No ads for a full week. Renew whenever it expires.',
                             price: active ? 'ACTIVE' : _price(pm, 'pivot_ball_weekly_skip', r'$2.99'),
                             buttonLabel: active ? 'ACTIVE' : 'BUY',
                             buttonColor: GameConstants.neonGreen,
@@ -106,8 +105,7 @@ Renew whenever it expires.',
                             title: skipActive ? 'AD-FREE TODAY ✓' : 'DAILY AD-FREE PASS',
                             subtitle: skipActive
                                 ? 'Expires in $hh h $mm min'
-                                : 'Skip ALL ads for 24 hours.
-Renew any day you play.',
+                                : 'Skip ALL ads for 24 hours. Renew any day you play.',
                             price: skipActive ? 'ACTIVE' : _price(pm, 'pivot_ball_daily_skip', r'$0.99'),
                             buttonLabel: skipActive ? 'ACTIVE' : 'BUY',
                             buttonColor: GameConstants.neonBlue,
