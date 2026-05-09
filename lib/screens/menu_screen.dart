@@ -230,6 +230,43 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                           
                           const SizedBox(height: 16),
                           
+                          // Remove Ads CTA — only shown to non-premium users
+                          ValueListenableBuilder<bool>(
+                            valueListenable: PurchaseManager.instance.adsRemovedNotifier,
+                            builder: (context, adsRemoved, child) {
+                              if (adsRemoved) return const SizedBox.shrink();
+                              return GestureDetector(
+                                onTap: () {
+                                  AudioManager.instance.playClick();
+                                  _navigateTo(const StoreScreen());
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 14),
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: GameConstants.goldColor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(color: GameConstants.goldColor.withOpacity(0.5)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.block, color: GameConstants.goldColor, size: 16),
+                                      SizedBox(width: 8),
+                                      Text('REMOVE ADS — \$2.99',
+                                        style: TextStyle(
+                                          color: GameConstants.goldColor,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 1,
+                                        )),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -243,6 +280,12 @@ class _MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateM
                                 Icons.settings,
                                 'SETTINGS',
                                 () => _navigateTo(const SettingsScreen()),
+                              ),
+                              const SizedBox(width: 12),
+                              _buildSmallButton(
+                                Icons.shopping_bag_outlined,
+                                'STORE',
+                                () => _navigateTo(const StoreScreen()),
                               ),
                               const SizedBox(width: 12),
                               _buildSmallButton(

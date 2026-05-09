@@ -3,6 +3,8 @@ import '../utils/constants.dart';
 import '../utils/audio_manager.dart';
 import '../utils/storage_manager.dart';
 import '../utils/ad_manager.dart';
+import '../utils/notification_manager.dart';
+import '../utils/storage_manager.dart';
 import '../widgets/game_engine.dart';
 import '../widgets/virtual_joystick.dart';
 import 'menu_screen.dart';
@@ -23,6 +25,8 @@ class _GameplayScreenState extends State<GameplayScreen> {
   bool _showCountdown = true;
   int  _countdown     = 3;
   bool _showMilestone = false;
+  bool _bonusTimeUsed = false;
+  bool _skipUsed      = false;
 
   final GlobalKey<GameEngineState> _gameKey = GlobalKey<GameEngineState>();
   LevelData? _levelData;
@@ -108,6 +112,7 @@ class _GameplayScreenState extends State<GameplayScreen> {
         }
       });
     } else {
+      NotificationManager.instance.scheduleLoseReminder(_currentLevel);
       AdManager.instance.showInterstitialAd(onDismissed: () {
         if (!mounted) return;
         Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -177,6 +182,45 @@ class _GameplayScreenState extends State<GameplayScreen> {
                     child: const Icon(Icons.pause, color: Colors.white, size: 20),
                   ),
                 ),
+              ),
+
+            // ── +30s Rewarded Ad Button ──────────────────────────────
+            if (!_showCountdown && !_isPaused && !_bonusTimeUsed)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 55,
+                right: 16,
+                child: Builder(builder: (context) {
+                  if (!AdManager.instance.rewardedAdReady) return const SizedBox.shrink();
+                  return GestureDetector(
+                    onTap: () async {
+                      AudioManager.instance.playClick();
+                      final earned = await AdManager.instance.showRewardedAd();
+                      if (earned && mounted) {
+                        _gameKey.currentState?.addBonusTime(30);
+                        setState(() => _bonusTimeUsed = true);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: GameConstants.goldColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: GameConstants.goldColor, width: 1.5),
+                        boxShadow: [BoxShadow(
+                          color: GameConstants.goldColor.withOpacity(0.2),
+                          blurRadius: 8,
+                        )],
+                      ),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.play_circle_outline, color: GameConstants.goldColor, size: 14),
+                        SizedBox(width: 4),
+                        Text('+30s', style: TextStyle(
+                          color: GameConstants.goldColor, fontSize: 11,
+                          fontWeight: FontWeight.bold, letterSpacing: 1)),
+                      ]),
+                    ),
+                  );
+                }),
               ),
 
             // ── Bottom control panel ─────────────────────────────────
@@ -348,7 +392,20 @@ class _GameplayScreenState extends State<GameplayScreen> {
                         _startCountdown();
                       }),
                       const SizedBox(height: 16),
-                      _pauseBtn('QUIT', GameConstants.neonRed, () {
+                      // Skip Level via rewarded ad (available from level 6+)
+              if (_currentLevel > 5 && !_skipUsed && AdManager.instance.rewardedAdReady)
+                Column(mainAxisSize: MainAxisSize.min, children: [
+                  _pauseBtn('⏭  SKIP LEVEL  (Ad)', GameConstants.neonBlue, () async {
+                    final earned = await AdManager.instance.showRewardedAd();
+                    if (earned && mounted) {
+                      setState(() { _isPaused = false; _skipUsed = true; });
+                      _onGameEnd(_totalScore, _currentLevel, true);
+                    }
+                  }),
+                  const SizedBox(height: 16),
+                ]),
+
+              _pauseBtn('QUIT', GameConstants.neonRed, () {
                         AudioManager.instance.resumeMusic();
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(builder: (_) => const MenuScreen()),

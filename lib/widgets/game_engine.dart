@@ -306,6 +306,12 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
   void setLeftInput(double value)  => _leftInput  = value;
   void setRightInput(double value) => _rightInput = value;
 
+  /// Called from gameplay_screen when user watches a rewarded ad
+  void addBonusTime(int seconds) {
+    setState(() => _timeLeft += seconds);
+    widget.onScoreUpdate(_score, _timeLeft.toInt());
+  }
+
   @override
   void dispose() {
     _gameTimer?.cancel();
