@@ -63,17 +63,14 @@ class PivotBallApp extends StatelessWidget {
       // overlay on top of whatever screen is currently showing.
       // Auto-dismisses the moment connection is restored.
       builder: (context, child) {
-        return ValueListenableBuilder<bool>(
-          valueListenable: NetworkMonitor.instance.isOnline,
-          builder: (context, online, _) {
+        return ValueListenableBuilder<NetworkStatus>(
+          valueListenable: NetworkMonitor.instance.status,
+          builder: (context, netStatus, _) {
             return Stack(
               children: [
-                // The actual app
                 child ?? const SizedBox.shrink(),
-
-                // Network overlay — sits on top of everything when offline
-                if (!online)
-                  const _NetworkOverlay(),
+                if (netStatus != NetworkStatus.online)
+                  _NetworkOverlay(status: netStatus),
               ],
             );
           },
@@ -85,14 +82,23 @@ class PivotBallApp extends StatelessWidget {
 
 // ── Inline overlay widget ─────────────────────────────────────────────────
 class _NetworkOverlay extends StatelessWidget {
-  const _NetworkOverlay();
+  final NetworkStatus status;
+  const _NetworkOverlay({required this.status});
 
   @override
   Widget build(BuildContext context) {
+    final isNoInternet = status == NetworkStatus.noInternet;
+
+    final title   = isNoInternet ? 'NO INTERNET' : 'NO CONNECTION';
+    final icon    = isNoInternet ? Icons.signal_wifi_bad : Icons.wifi_off_rounded;
+    final message = isNoInternet
+        ? 'You are connected to a network but have no internet access.\n\nCheck your Wi-Fi password, data plan, or contact your provider.'
+        : 'Pivot Ball needs internet to run ads and support the game.\n\nPlease turn on Wi-Fi or mobile data.';
+
     return Material(
       color: Colors.transparent,
       child: Container(
-        color: Colors.black.withOpacity(0.92),
+        color: Colors.black.withOpacity(0.93),
         child: SafeArea(
           child: Center(
             child: Padding(
@@ -100,74 +106,33 @@ class _NetworkOverlay extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Pulsing icon
-                  _PulsingIcon(),
-
+                  _PulsingIcon(icon: icon),
                   const SizedBox(height: 28),
-
-                  // Title
-                  const Text(
-                    'NO CONNECTION',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF3131),
-                      letterSpacing: 4,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-
+                  Text(title, style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold,
+                    color: Color(0xFFFF3131), letterSpacing: 4),
+                    textAlign: TextAlign.center),
                   const SizedBox(height: 16),
-
-                  // Message
-                  Text(
-                    'Pivot Ball needs internet to\nrun ads and support the game.\n\nPlease turn on Wi-Fi or mobile data.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.6),
-                      height: 1.8,
-                      letterSpacing: 0.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-
-                  const SizedBox(height: 32),
-
-                  // Auto-reconnect indicator
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 14, height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            GameConstants.goldColor.withOpacity(0.6),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Checking connection...',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: GameConstants.goldColor.withOpacity(0.6),
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-
+                  Text(message, style: TextStyle(
+                    fontSize: 11, color: Colors.white.withOpacity(0.6),
+                    height: 1.8, letterSpacing: 0.3),
+                    textAlign: TextAlign.center),
+                  const SizedBox(height: 28),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          GameConstants.goldColor.withOpacity(0.6)))),
+                    const SizedBox(width: 10),
+                    Text('Checking...', style: TextStyle(
+                      fontSize: 10,
+                      color: GameConstants.goldColor.withOpacity(0.6),
+                      letterSpacing: 1)),
+                  ]),
                   const SizedBox(height: 8),
-
-                  Text(
-                    'This will dismiss automatically\nonce you are connected.',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: Colors.white.withOpacity(0.3),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+                  Text('Dismisses automatically when connected.',
+                    style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.25)),
+                    textAlign: TextAlign.center),
                 ],
               ),
             ),
@@ -179,6 +144,8 @@ class _NetworkOverlay extends StatelessWidget {
 }
 
 class _PulsingIcon extends StatefulWidget {
+  final IconData icon;
+  const _PulsingIcon({this.icon = Icons.wifi_off_rounded});
   @override
   State<_PulsingIcon> createState() => _PulsingIconState();
 }

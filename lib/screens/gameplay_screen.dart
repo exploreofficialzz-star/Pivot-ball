@@ -21,11 +21,14 @@ class _GameplayScreenState extends State<GameplayScreen> {
   late int _currentLevel;
   int  _totalScore    = 0;
   bool _isPaused      = false;
+  bool _gameOver      = false;
   bool _showCountdown = true;
   int  _countdown     = 3;
   bool _showMilestone = false;
-  bool _bonusTimeUsed = false;
-  bool _skipUsed      = false;
+  int  _nextBonusLevel = 1;   // level when +30s becomes available again
+  int  _nextSkipLevel  = 6;   // level when SKIP becomes available again
+  bool _bonusTimeUsed  = false; // used this cycle
+  bool _skipUsed       = false; // used this cycle
 
   final GlobalKey<GameEngineState> _gameKey = GlobalKey<GameEngineState>();
   LevelData? _levelData;
@@ -112,17 +115,81 @@ class _GameplayScreenState extends State<GameplayScreen> {
       });
     } else {
       NotificationManager.instance.scheduleLoseReminder(_currentLevel);
-      AdManager.instance.showInterstitialAd(onDismissed: () {
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(MaterialPageRoute(
-          builder: (_) => GameOverScreen(
-            score: _totalScore,
-            level: level,
-            won:   false,
-          ),
-        ));
-      });
+      // Offer +30s rewarded ad before game over — player may want to continue
+      if (AdManager.instance.rewardedAdReady && !_bonusTimeUsed) {
+        _showContinueOffer(level);
+      } else {
+        AdManager.instance.showInterstitialAd(onDismissed: () {
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) => GameOverScreen(score: _totalScore, level: level, won: false),
+          ));
+        });
+      }
     }
+  }
+
+  /// Shows a dialog offering the player a rewarded ad to get +30s instead of
+  /// going straight to game over. Fires only when a rewarded ad is ready.
+  void _showContinueOffer(int level) {
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Game Over!',
+          style: TextStyle(color: GameConstants.goldColor, fontSize: 14, letterSpacing: 2),
+          textAlign: TextAlign.center),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Watch a short ad to get +30s
+and keep playing!',
+            style: TextStyle(color: Colors.white70, fontSize: 10, height: 1.6),
+            textAlign: TextAlign.center),
+          const SizedBox(height: 20),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('No thanks', style: TextStyle(
+                color: Colors.white38, fontSize: 9)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: GameConstants.goldColor,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+              icon: const Icon(Icons.play_circle_outline, size: 16),
+              label: const Text('+30s', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
+          ]),
+        ]),
+      ),
+    ).then((watch) async {
+      if (watch == true && mounted) {
+        final earned = await AdManager.instance.showRewardedAd();
+        if (earned && mounted) {
+          // Restart the same level with +30s bonus
+          setState(() {
+            _bonusTimeUsed  = true;
+            _nextBonusLevel = _currentLevel + 4 + (DateTime.now().millisecond % 2);
+            _gameOver       = false;
+          });
+          _gameKey.currentState?.addBonusTime(30);
+          return;
+        }
+      }
+      // No ad or declined — show interstitial then game over
+      if (mounted) {
+        AdManager.instance.showInterstitialAd(onDismissed: () {
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(MaterialPageRoute(
+            builder: (_) => GameOverScreen(score: _totalScore, level: level, won: false),
+          ));
+        });
+      }
+    });
   }
 
   void _onScoreUpdate(int score, int timeLeft) {
@@ -221,14 +288,17 @@ class _GameplayScreenState extends State<GameplayScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             // +30s bonus time button
-                            if (!_bonusTimeUsed && AdManager.instance.rewardedAdReady)
+                            if (!_bonusTimeUsed && _currentLevel >= _nextBonusLevel && AdManager.instance.rewardedAdReady)
                               GestureDetector(
                                 onTap: () async {
                                   AudioManager.instance.playClick();
                                   final earned = await AdManager.instance.showRewardedAd();
                                   if (earned && mounted) {
                                     _gameKey.currentState?.addBonusTime(30);
-                                    setState(() => _bonusTimeUsed = true);
+                                    setState(() {
+                                      _bonusTimeUsed  = true;
+                                      _nextBonusLevel = _currentLevel + 4 + (DateTime.now().millisecond % 2);
+                                    });
                                   }
                                 },
                                 child: Container(
@@ -250,13 +320,16 @@ class _GameplayScreenState extends State<GameplayScreen> {
                               ),
 
                             // Skip level button (level 6+)
-                            if (_currentLevel > 5 && !_skipUsed && AdManager.instance.rewardedAdReady)
+                            if (!_skipUsed && _currentLevel >= _nextSkipLevel && AdManager.instance.rewardedAdReady)
                               GestureDetector(
                                 onTap: () async {
                                   AudioManager.instance.playClick();
                                   final earned = await AdManager.instance.showRewardedAd();
                                   if (earned && mounted) {
-                                    setState(() => _skipUsed = true);
+                                    setState(() {
+                                      _skipUsed      = true;
+                                      _nextSkipLevel = _currentLevel + 4 + (DateTime.now().millisecond % 2);
+                                    });
                                     _onGameEnd(_totalScore, _currentLevel, true);
                                   }
                                 },
@@ -416,12 +489,16 @@ class _GameplayScreenState extends State<GameplayScreen> {
                       }),
                       const SizedBox(height: 16),
                       // Skip Level via rewarded ad (available from level 6+)
-              if (_currentLevel > 5 && !_skipUsed && AdManager.instance.rewardedAdReady)
+              if (!_skipUsed && _currentLevel >= _nextSkipLevel && AdManager.instance.rewardedAdReady)
                 Column(mainAxisSize: MainAxisSize.min, children: [
                   _pauseBtn('⏭  SKIP LEVEL  (Ad)', GameConstants.neonBlue, () async {
                     final earned = await AdManager.instance.showRewardedAd();
                     if (earned && mounted) {
-                      setState(() { _isPaused = false; _skipUsed = true; });
+                      setState(() {
+                        _isPaused      = false;
+                        _skipUsed      = true;
+                        _nextSkipLevel = _currentLevel + 4 + (DateTime.now().millisecond % 2);
+                      });
                       _onGameEnd(_totalScore, _currentLevel, true);
                     }
                   }),

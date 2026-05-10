@@ -75,7 +75,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     // ── Network gate ────────────────────────────────────────────────────────
     // NetworkMonitor already running from main() — just read its state
-    final online = NetworkMonitor.instance.isOnline.value;
+    final online = NetworkMonitor.instance.status.value == NetworkStatus.online;
 
     // Start ads only when online
     if (online) AdManager.instance.initialize();
