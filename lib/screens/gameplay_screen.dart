@@ -21,7 +21,6 @@ class _GameplayScreenState extends State<GameplayScreen> {
   late int _currentLevel;
   int  _totalScore    = 0;
   bool _isPaused      = false;
-  bool _gameOver      = false;
   bool _showCountdown = true;
   int  _countdown     = 3;
   bool _showMilestone = false;
@@ -142,9 +141,7 @@ class _GameplayScreenState extends State<GameplayScreen> {
           style: TextStyle(color: GameConstants.goldColor, fontSize: 14, letterSpacing: 2),
           textAlign: TextAlign.center),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Watch a short ad to get +30s
-and keep playing!',
-            style: TextStyle(color: Colors.white70, fontSize: 10, height: 1.6),
+          const Text('Watch a short ad to get +30s and keep playing!', style: TextStyle(color: Colors.white70, fontSize: 10, height: 1.6),
             textAlign: TextAlign.center),
           const SizedBox(height: 20),
           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
