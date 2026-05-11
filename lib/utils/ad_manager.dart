@@ -150,6 +150,9 @@ class AdManager {
     try {
       // Legacy permanent removal
       if (StorageManager.instance.getAdsRemoved()) return true;
+      // Monthly skip — 30 days
+      final monthly = StorageManager.instance.getMonthlySkipTime();
+      if (monthly != null && DateTime.now().difference(monthly).inDays < 30) return true;
       // Weekly skip — $2.99 for 7 days
       final weekly = StorageManager.instance.getWeeklySkipTime();
       if (weekly != null && DateTime.now().difference(weekly).inDays < 7) return true;

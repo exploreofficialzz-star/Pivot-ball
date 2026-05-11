@@ -20,10 +20,11 @@ class PurchaseManager {
   List<ProductDetails> _products = [];
 
   // Notifiers
+  final ValueNotifier<bool> monthlySkipNotifier = ValueNotifier(false);
   final ValueNotifier<bool> weeklySkipNotifier  = ValueNotifier(false);
   final ValueNotifier<bool> dailySkipNotifier   = ValueNotifier(false);
 
-  bool get adsRemoved    => isWeeklySkipActive() || isDailySkipActive();
+  bool get adsRemoved    => isMonthlySkipActive() || isWeeklySkipActive() || isDailySkipActive();
   bool get storeAvailable => _available;
   bool get loading        => _loading;
   List<ProductDetails> get products => _products;
@@ -33,6 +34,7 @@ class PurchaseManager {
   // =========================================================================
   Future<void> initialize() async {
     // Restore saved purchase state first
+    monthlySkipNotifier.value = isMonthlySkipActive();
     weeklySkipNotifier.value  = isWeeklySkipActive();
     dailySkipNotifier.value   = isDailySkipActive();
 
@@ -55,7 +57,7 @@ class PurchaseManager {
 
   Future<void> _loadProducts() async {
     try {
-      final response = await _iap.queryProductDetails({weeklySkipId, dailySkipId});
+      final response = await _iap.queryProductDetails({monthlySkipId, weeklySkipId, dailySkipId});
       _products = response.productDetails;
     } catch (_) {}
   }
@@ -98,6 +100,10 @@ class PurchaseManager {
   }
 
   Future<void> _grant(PurchaseDetails purchase) async {
+    if (purchase.productID == monthlySkipId) {
+      await StorageManager.instance.saveMonthlySkipTime();
+      monthlySkipNotifier.value = true;
+    }
     if (purchase.productID == weeklySkipId) {
       await StorageManager.instance.saveWeeklySkipTime();
       weeklySkipNotifier.value = true;
@@ -107,6 +113,30 @@ class PurchaseManager {
       await StorageManager.instance.saveDailySkipTime();
       dailySkipNotifier.value = true;
     }
+  }
+
+  bool isMonthlySkipActive() {
+    final bought = StorageManager.instance.getMonthlySkipTime();
+    if (bought == null) return false;
+    return DateTime.now().difference(bought).inDays < 30;
+  }
+
+  Duration get monthlySkipRemaining {
+    final bought = StorageManager.instance.getMonthlySkipTime();
+    if (bought == null) return Duration.zero;
+    final remaining = const Duration(days: 30) - DateTime.now().difference(bought);
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  Future<void> buyMonthlySkip() async {
+    if (!_available || _loading) return;
+    final ProductDetails? product = _products.cast<ProductDetails?>().firstWhere(
+      (p) => p?.id == monthlySkipId, orElse: () => null);
+    if (product == null) return;
+    _loading = true;
+    try {
+      await _iap.buyConsumable(purchaseParam: PurchaseParam(productDetails: product));
+    } catch (_) { _loading = false; }
   }
 
   bool isWeeklySkipActive() {
@@ -163,6 +193,7 @@ class PurchaseManager {
 
   void dispose() {
     _subscription?.cancel();
+    monthlySkipNotifier.dispose();
     weeklySkipNotifier.dispose();
     dailySkipNotifier.dispose();
   }

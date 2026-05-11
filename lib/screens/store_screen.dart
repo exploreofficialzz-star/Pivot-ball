@@ -62,6 +62,36 @@ class _StoreScreenState extends State<StoreScreen> {
                     children: [
                       const SizedBox(height: 16),
 
+                      // ── 30-DAY AD-FREE PASS (\$8.99) — BEST VALUE ─────────
+                      ValueListenableBuilder<bool>(
+                        valueListenable: pm.monthlySkipNotifier,
+                        builder: (context, active, child) {
+                          final rem  = pm.monthlySkipRemaining;
+                          final days = rem.inDays;
+                          final hrs  = rem.inHours % 24;
+                          return _StoreCard(
+                            icon: active ? Icons.workspace_premium : Icons.star_rounded,
+                            iconColor: Colors.amber,
+                            title: active ? '30-DAY PASS ACTIVE' : '30-DAY AD-FREE PASS',
+                            subtitle: active
+                                ? 'Expires in \${days}d \${hrs}h'
+                                : 'Best value! No ads for a full 30 days.',
+                            price: active ? 'ACTIVE' : r'\$8.99',
+                            buttonLabel: active ? 'ACTIVE' : 'BUY',
+                            buttonColor: Colors.amber,
+                            loading: _loading,
+                            onTap: active ? null : () async {
+                              AudioManager.instance.playClick();
+                              setState(() => _loading = true);
+                              try { await pm.buyMonthlySkip(); } catch (_) {}
+                              if (mounted) setState(() => _loading = false);
+                            },
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+
                       // ── WEEKLY AD SKIP ($2.99 / 7 days) ──────────────────
                       ValueListenableBuilder<bool>(
                         valueListenable: pm.weeklySkipNotifier,

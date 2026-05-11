@@ -169,4 +169,15 @@ class StorageManager {
     return s != null ? DateTime.tryParse(s) : null;
   }
 
+  // ── 30-Day Ad Skip ────────────────────────────────────────────────────────
+  Future<void> saveMonthlySkipTime() async {
+    await initialize();
+    await _prefs?.setString('monthly_skip_time', DateTime.now().toIso8601String());
+  }
+
+  DateTime? getMonthlySkipTime() {
+    final s = _prefs?.getString('monthly_skip_time');
+    return s != null ? DateTime.tryParse(s) : null;
+  }
+
 }
