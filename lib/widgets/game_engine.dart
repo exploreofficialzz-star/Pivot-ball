@@ -312,6 +312,45 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     widget.onScoreUpdate(_score, _timeLeft.toInt());
   }
 
+  /// Fully restores the game after a rewarded-ad continue.
+  /// Resets ball + bar to start position, unfreezes the loop, restarts timer.
+  void resetAndResume(int bonusSeconds) {
+    if (!mounted || _screenSize == null) return;
+    final size  = _screenSize!;
+    final barY  = size.height * GameConstants.maxBarY;
+
+    // 1. Reset ball to centre of bar
+    ball.position = Offset(size.width / 2, barY - GameConstants.ballRadius - 4);
+    ball.velocity = Offset.zero;
+
+    // 2. Straighten bar
+    bar.leftY        = barY;
+    bar.rightY       = barY;
+    bar.targetLeftY  = barY;
+    bar.targetRightY = barY;
+
+    // 3. Clear joystick inputs
+    _leftInput  = 0;
+    _rightInput = 0;
+
+    // 4. Unfreeze engine and add bonus time
+    setState(() {
+      _gameOver  = false;
+      _timeLeft += bonusSeconds;
+    });
+
+    // 5. Restart timer (it cancelled itself when game ended)
+    _gameTimer?.cancel();
+    _startTimer();
+
+    // 6. Restart the animation loop (it also stopped)
+    _lastFrameTime = null;
+    _gameLoopController.stop();
+    _gameLoopController.forward();
+
+    widget.onScoreUpdate(_score, _timeLeft.toInt());
+  }
+
   @override
   void dispose() {
     _gameTimer?.cancel();
