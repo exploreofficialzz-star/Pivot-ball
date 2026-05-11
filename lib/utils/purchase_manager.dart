@@ -9,6 +9,7 @@ class PurchaseManager {
   PurchaseManager._internal();
 
   // ── Product IDs — must match exactly what you create in Play Console / App Store Connect
+  static const String monthlySkipId  = 'pivot_ball_monthly_skip'; // \$8.99 — 30 days ad-free
   static const String weeklySkipId   = 'pivot_ball_weekly_skip'; // \$2.99 — 7 days ad-free
   static const String dailySkipId    = 'pivot_ball_daily_skip'; // $0.99 consumable
 

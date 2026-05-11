@@ -67,14 +67,12 @@ class _StoreScreenState extends State<StoreScreen> {
                         valueListenable: pm.monthlySkipNotifier,
                         builder: (context, active, child) {
                           final rem  = pm.monthlySkipRemaining;
-                          final days = rem.inDays;
-                          final hrs  = rem.inHours % 24;
                           return _StoreCard(
                             icon: active ? Icons.workspace_premium : Icons.star_rounded,
                             iconColor: Colors.amber,
                             title: active ? '30-DAY PASS ACTIVE' : '30-DAY AD-FREE PASS',
                             subtitle: active
-                                ? 'Expires in \${days}d \${hrs}h'
+                                ? 'Expires in ${rem.inDays}d ${rem.inHours % 24}h'
                                 : 'Best value! No ads for a full 30 days.',
                             price: active ? 'ACTIVE' : r'\$8.99',
                             buttonLabel: active ? 'ACTIVE' : 'BUY',
