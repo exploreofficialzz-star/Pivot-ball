@@ -172,7 +172,7 @@ class _GameplayScreenState extends State<GameplayScreen> {
             _bonusTimeUsed  = true;
             _nextBonusLevel = _currentLevel + 4 + (DateTime.now().millisecond % 2);
           });
-          _gameKey.currentState?.addBonusTime(30);
+          _gameKey.currentState?.resetAndResume(30);
           return;
         }
       }
