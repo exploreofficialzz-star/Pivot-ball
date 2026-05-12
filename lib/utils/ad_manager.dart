@@ -127,6 +127,7 @@ class AdManager {
           _interstitialAd = ad;
           _consecutiveFails = 0;
           _adBlocked = false;
+          adBlockedNotifier.value = false;
           ad.setImmersiveMode(true);
         },
         onAdFailedToLoad: (error) {
@@ -278,7 +279,10 @@ class AdManager {
   // =========================================================================
   void _trackFailure() {
     _consecutiveFails++;
-    if (_consecutiveFails >= 5) _adBlocked = true;
+    if (_consecutiveFails >= 5) {
+      _adBlocked = true;
+      adBlockedNotifier.value = true;
+    }
   }
 
   // =========================================================================
