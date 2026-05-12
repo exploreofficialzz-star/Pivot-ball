@@ -175,8 +175,9 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
   double _leftInput  = 0;
   double _rightInput = 0;
   int    _score      = 0;
-  double _timeLeft   = 60;
-  Timer?  _gameTimer;
+  double   _timeLeft          = 60;
+  Timer?   _gameTimer;
+  final Set<int> _completedTargets = {}; // tracks which green holes ball has hit
   bool   _gameOver   = false;
   late AnimationController _gameLoopController;
   DateTime? _lastFrameTime;
@@ -206,6 +207,7 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     ball = Ball(
       position: Offset(size.width / 2, barY - GameConstants.ballRadius - 4),
     );
+    _completedTargets.clear();
 
     _gameLoopController.forward();
     _startTimer();
@@ -279,26 +281,55 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
 
   void _checkHoles() {
     for (int i = 0; i < widget.levelData.holePositions.length; i++) {
+      // Skip already-completed targets
+      if (_completedTargets.contains(i)) continue;
+
       final holePos = widget.levelData.holePositions[i];
       final dist    = (ball.position - holePos).distance;
 
       if (dist < GameConstants.holeRadius - 4) {
-        if (i == widget.levelData.targetHoleIndex) {
-          setState(() {
-            _gameOver = true;
-            _score += GameConstants.pointsPerLevel * widget.levelData.level +
-                      (_timeLeft * 10).toInt();
-            AudioManager.instance.playWin();
-            widget.onGameEnd(_score, widget.levelData.level, true);
-          });
+        if (widget.levelData.targetHoleIndices.contains(i)) {
+          // ── Hit a green target hole ───────────────────────────────────
+          _completedTargets.add(i);
+          AudioManager.instance.playClick();
+
+          final allDone = _completedTargets.length ==
+              widget.levelData.targetHoleIndices.length;
+
+          if (allDone) {
+            // ALL targets hit — level complete!
+            setState(() {
+              _gameOver = true;
+              _score   += GameConstants.pointsPerLevel * widget.levelData.level +
+                          (_timeLeft * 10).toInt() +
+                          (_completedTargets.length * 50);
+              AudioManager.instance.playWin();
+              widget.onGameEnd(_score, widget.levelData.level, true);
+            });
+          } else {
+            // More targets remain — reset ball to bar centre
+            setState(() {
+              final size = _screenSize!;
+              final barY = bar.getYatX(size.width / 2, size);
+              ball.position = Offset(size.width / 2, barY - GameConstants.ballRadius - 4);
+              ball.velocity = Offset.zero;
+              _leftInput    = 0;
+              _rightInput   = 0;
+            });
+            widget.onScoreUpdate(_score, _timeLeft.toInt());
+          }
+          return;
+
         } else if (widget.levelData.deadHoleIndices.contains(i)) {
+          // ── Hit a red dead hole — instant lose ────────────────────────
           setState(() {
             _gameOver = true;
             AudioManager.instance.playLose();
             widget.onGameEnd(_score, widget.levelData.level, false);
           });
+          return;
         }
-        return;
+        // Neutral hole — ball rolls over it, no effect
       }
     }
   }
@@ -334,6 +365,7 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     _rightInput = 0;
 
     // 4. Unfreeze engine and add bonus time
+    _completedTargets.clear();
     setState(() {
       _gameOver  = false;
       _timeLeft += bonusSeconds;
@@ -378,8 +410,9 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
         // Holes
         ...List.generate(widget.levelData.holePositions.length, (index) {
           final pos      = widget.levelData.holePositions[index];
-          final isTarget = index == widget.levelData.targetHoleIndex;
-          final isDead   = widget.levelData.deadHoleIndices.contains(index);
+          final isTarget    = widget.levelData.targetHoleIndices.contains(index);
+          final isDead     = widget.levelData.deadHoleIndices.contains(index);
+          final isComplete = _completedTargets.contains(index);
 
           return Positioned(
             left: pos.dx - GameConstants.holeRadius,
@@ -389,23 +422,29 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
               height: GameConstants.holeRadius * 2,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isTarget
-                    ? GameConstants.neonGreen.withOpacity(0.3)
-                    : isDead
-                        ? GameConstants.neonRed.withOpacity(0.3)
-                        : Colors.black.withOpacity(0.5),
+                color: isComplete
+                    ? Colors.grey.withOpacity(0.25)
+                    : isTarget
+                        ? GameConstants.neonGreen.withOpacity(0.3)
+                        : isDead
+                            ? GameConstants.neonRed.withOpacity(0.3)
+                            : Colors.black.withOpacity(0.5),
                 border: Border.all(
-                  color: isTarget
-                      ? GameConstants.neonGreen
-                      : isDead ? GameConstants.neonRed
-                               : Colors.white.withOpacity(0.3),
+                  color: isComplete
+                      ? Colors.grey
+                      : isTarget
+                          ? GameConstants.neonGreen
+                          : isDead
+                              ? GameConstants.neonRed
+                              : Colors.white.withOpacity(0.3),
                   width: isTarget || isDead ? 3 : 1.5,
                 ),
-                boxShadow: isTarget
-                    ? [BoxShadow(color: GameConstants.neonGreen.withOpacity(0.3), blurRadius: 8, spreadRadius: 1)]
-                    : isDead
-                        ? [BoxShadow(color: GameConstants.neonRed.withOpacity(0.2), blurRadius: 6, spreadRadius: 1)]
-                        : null,
+                boxShadow: isComplete ? null
+                    : isTarget
+                        ? [BoxShadow(color: GameConstants.neonGreen.withOpacity(0.3), blurRadius: 8, spreadRadius: 1)]
+                        : isDead
+                            ? [BoxShadow(color: GameConstants.neonRed.withOpacity(0.2), blurRadius: 6, spreadRadius: 1)]
+                            : null,
               ),
               child: Center(
                 child: Container(

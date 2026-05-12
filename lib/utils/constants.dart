@@ -2,143 +2,173 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 class GameConstants {
-  static const String appName = 'Pivot Ball';
-  static const String appSubtitle = 'Retro Physics Challenge';
-  static const String companyName = 'chAs';
+  static const String appName         = 'Pivot Ball';
+  static const String appSubtitle     = 'Retro Physics Challenge';
+  static const String companyName     = 'chAs';
   static const String companyFullName = 'chas tech group';
 
   // Physics
-  static const double gravity         = 800.0;
-  static const double maxTiltAngle    = 30.0 * pi / 180.0;
-  static const double ballRadius      = 14.0;
-  static const double barHeight       = 8.0;
-  static const double barWidth        = 280.0;
-  static const double holeRadius      = 22.0;
-  static const double maxBarY         = 0.75;
-  static const double minBarY         = 0.15;
-  static const double friction        = 0.98;
-  static const double bounceDamping   = 0.35; // coefficient of restitution
+  static const double gravity        = 800.0;
+  static const double maxTiltAngle   = 30.0 * pi / 180.0;
+  static const double ballRadius     = 14.0;
+  static const double barHeight      = 8.0;
+  static const double barWidth       = 280.0;
+  static const double holeRadius     = 22.0;
+  static const double maxBarY        = 0.75;
+  static const double minBarY        = 0.15;
+  static const double friction       = 0.98;
+  static const double bounceDamping  = 0.35;
 
-  // Levels — no hard cap; game runs infinitely and scales forever
-  static const int    maxLevels       = 999999;
-  static const double baseTimeLimit   = 60.0;
-  static const double timeDecayPerLevel = 0.8;
-  static const int    pointsPerLevel  = 100;
+  // Levels
+  static const int    maxLevels      = 999999;
+  static const int    pointsPerLevel = 100;
 
   // Colors
-  static const Color goldColor  = Color(0xFFFFB800);
-  static const Color darkGold   = Color(0xFFCC8A00);
-  static const Color neonGreen  = Color(0xFF39FF14);
-  static const Color neonRed    = Color(0xFFFF3131);
-  static const Color neonBlue   = Color(0xFF00D4FF);
-  static const Color woodBrown  = Color(0xFF8B6914);
-  static const Color darkWood   = Color(0xFF3D2B1F);
-
-  // Test Ad IDs (replaced at build time via --dart-define)
-  static const String bannerAdUnitId       = 'ca-app-pub-3940256099942544/6300978111';
-  static const String interstitialAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
-  static const String rewardedAdUnitId     = 'ca-app-pub-3940256099942544/5224354917';
+  static const Color goldColor = Color(0xFFFFB800);
+  static const Color darkGold  = Color(0xFFCC8A00);
+  static const Color neonGreen = Color(0xFF39FF14);
+  static const Color neonRed   = Color(0xFFFF3131);
+  static const Color neonBlue  = Color(0xFF00D4FF);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Level difficulty table
+//
+//  Level  │ Green targets │ Red holes │ Time   │ Bumpers
+//  ────────┼───────────────┼───────────┼────────┼────────
+//  1       │ 1             │ 0         │ 45 s   │ 0
+//  2-3     │ 1             │ 1         │ 45 s   │ 0
+//  4-6     │ 2             │ 2         │ 70 s   │ 0
+//  7-10    │ 2             │ 3         │ 70 s   │ 1-2
+//  11-15   │ 3             │ 4         │ 90 s   │ 2-3
+//  16-20   │ 3             │ 5         │ 90 s   │ 3-4
+//  21-30   │ 4             │ 6         │ 110 s  │ 4-5
+//  31-50   │ 4             │ 7-8       │ 100 s  │ 5-7
+//  51+     │ 5+            │ growing   │ decay  │ growing
+// ─────────────────────────────────────────────────────────────────────────────
+
 class LevelData {
-  final int level;
+  final int          level;
   final List<Offset> holePositions;
-  final int targetHoleIndex;
-  final List<int> deadHoleIndices;
-  final double timeLimit;
-  final bool hasMovingHoles;
-  final bool hasBumperPegs;
+  final List<int>    targetHoleIndices;  // ALL must be hit to win
+  final List<int>    deadHoleIndices;    // instant lose on contact
+  final double       timeLimit;
   final List<Offset> bumperPegs;
 
   LevelData({
     required this.level,
     required this.holePositions,
-    required this.targetHoleIndex,
+    required this.targetHoleIndices,
     this.deadHoleIndices = const [],
-    this.timeLimit = 60.0,
-    this.hasMovingHoles = false,
-    this.hasBumperPegs = false,
-    this.bumperPegs = const [],
+    this.timeLimit       = 45.0,
+    this.bumperPegs      = const [],
   });
 
-  // -------------------------------------------------------------------------
-  // Infinite level generator — scales difficulty forever, never stops
-  // -------------------------------------------------------------------------
+  // Convenience for legacy code
+  int get targetHoleIndex =>
+      targetHoleIndices.isNotEmpty ? targetHoleIndices.first : 0;
+
+  // =========================================================================
+  // Generator
+  // =========================================================================
   static LevelData generate(int level, Size screenSize) {
-    final random    = Random(level * 1337);
-    final playWidth = screenSize.width * 0.7;
-    final playHeight= screenSize.height * 0.55;
-    final startX    = (screenSize.width - playWidth) / 2;
-    final startY    = screenSize.height * 0.18;
+    final rng = Random(level * 1337 + 7);
 
-    // Holes: 3 at level 1, grows every 2 levels, caps at 16
-    final numHoles = min(3 + (level ~/ 2), 16);
+    // ── Difficulty params ─────────────────────────────────────────────────
+    final int numTargets = _numTargets(level);
+    final int numDead    = _numDead(level);
+    final int numNeutral = max(1, level ~/ 5);        // neutral/empty holes
+    final int numHoles   = numTargets + numDead + numNeutral;
+    final double time    = _timeLimit(level, numTargets);
 
-    // Grid layout
-    const cols  = 3;
-    final rows  = (numHoles / cols).ceil();
+    // ── Hole positions ────────────────────────────────────────────────────
+    final playW  = screenSize.width  * 0.78;
+    final playH  = screenSize.height * 0.50;
+    final startX = (screenSize.width  - playW) / 2;
+    final startY = screenSize.height  * 0.17;
+
+    final cols   = 3;
+    final rows   = (numHoles / cols).ceil();
     final List<Offset> holes = [];
 
     for (int i = 0; i < numHoles; i++) {
-      final row    = i ~/ cols;
-      final col    = i % cols;
-      final jitterX = (random.nextDouble() - 0.5) * playWidth  * 0.18;
-      final jitterY = (random.nextDouble() - 0.5) * playHeight * 0.12;
-
-      final x = startX + (playWidth  / max(cols - 1, 1)) * col + jitterX;
-      final y = startY + (playHeight / (rows + 1))        * (row + 1) + jitterY;
+      final row = i ~/ cols;
+      final col = i % cols;
+      final jx  = (rng.nextDouble() - 0.5) * playW * 0.18;
+      final jy  = (rng.nextDouble() - 0.5) * playH * 0.12;
+      final x   = startX + (playW / max(cols - 1, 1)) * col + jx;
+      final y   = startY + (playH / (rows + 1)) * (row + 1) + jy;
       holes.add(Offset(
-        x.clamp(startX + 24, startX + playWidth  - 24),
-        y.clamp(startY + 24, startY + playHeight - 24),
+        x.clamp(startX + 28, startX + playW - 28),
+        y.clamp(startY + 28, startY + playH - 28),
       ));
     }
 
-    // Target hole
-    final targetIndex = random.nextInt(numHoles);
+    // ── Assign roles randomly ─────────────────────────────────────────────
+    final indices = List<int>.generate(numHoles, (i) => i)..shuffle(rng);
+    final targetIndices = indices.sublist(0, numTargets);
+    final deadIndices   = indices.sublist(numTargets, numTargets + numDead);
 
-    // Dead holes — start at level 3, grow every 4 levels, cap at numHoles-1
-    final Set<int> deadHoles = {};
-    if (level > 3) {
-      final numDead = min((level - 3) ~/ 4 + 1, numHoles - 1);
-      int attempts = 0;
-      while (deadHoles.length < numDead && attempts < 100) {
-        final idx = random.nextInt(numHoles);
-        if (idx != targetIndex) deadHoles.add(idx);
-        attempts++;
-      }
-    }
-
-    // Bumper pegs — start at level 8, grow every 3 levels, cap at 10
-    List<Offset> bumpers = [];
-    if (level > 8) {
-      final numBumpers = min((level - 8) ~/ 3 + 1, 10);
-      for (int i = 0; i < numBumpers; i++) {
-        bumpers.add(Offset(
-          startX + random.nextDouble() * playWidth,
-          startY + random.nextDouble() * playHeight * 0.6,
-        ));
-      }
-    }
-
-    // Time limit: starts at 60s, shrinks per level, floor rises at 15s for level 100+
-    final minTime   = level > 100 ? 12.0 : 15.0;
-    final timeLimit = max(
-      GameConstants.baseTimeLimit - (level * GameConstants.timeDecayPerLevel),
-      minTime,
-    );
+    // ── Bumper pegs ───────────────────────────────────────────────────────
+    final numBumpers = _numBumpers(level);
+    final List<Offset> bumpers = [
+      for (int i = 0; i < numBumpers; i++)
+        Offset(
+          startX + rng.nextDouble() * playW,
+          startY + rng.nextDouble() * playH * 0.65,
+        ),
+    ];
 
     return LevelData(
-      level:          level,
-      holePositions:  holes,
-      targetHoleIndex:targetIndex,
-      deadHoleIndices:deadHoles.toList(),
-      timeLimit:      timeLimit,
-      hasMovingHoles: level > 15,
-      hasBumperPegs:  level > 8,
-      bumperPegs:     bumpers,
+      level:             level,
+      holePositions:     holes,
+      targetHoleIndices: targetIndices,
+      deadHoleIndices:   deadIndices,
+      timeLimit:         time,
+      bumperPegs:        bumpers,
     );
   }
 
-  // Milestone check — every 25 levels is a "round"
+  // ── Difficulty curves ─────────────────────────────────────────────────────
+  static int _numTargets(int lv) {
+    if (lv <= 3)  return 1;
+    if (lv <= 10) return 2;
+    if (lv <= 20) return 3;
+    if (lv <= 35) return 4;
+    if (lv <= 55) return 5;
+    return min(6 + (lv - 55) ~/ 10, 10);
+  }
+
+  static int _numDead(int lv) {
+    if (lv == 1)  return 0;
+    if (lv <= 3)  return 1;
+    if (lv <= 6)  return 2;
+    if (lv <= 10) return 3;
+    if (lv <= 15) return 4;
+    if (lv <= 20) return 5;
+    if (lv <= 30) return 6;
+    if (lv <= 50) return min(6 + (lv - 30) ~/ 4, 9);
+    return min(9 + (lv - 50) ~/ 5, 14);
+  }
+
+  static int _numBumpers(int lv) {
+    if (lv < 8)   return 0;
+    if (lv <= 15) return lv - 7;
+    if (lv <= 30) return min(8 + (lv - 15) ~/ 2, 12);
+    return min(12 + (lv - 30) ~/ 5, 16);
+  }
+
+  /// Time increases with target count (more holes = more time needed),
+  /// but decays slowly at high levels to maintain pressure.
+  static double _timeLimit(int lv, int targets) {
+    // Base per target
+    const double perTarget = 22.0;
+    // Bonus for early levels
+    final double base = targets * perTarget + 10;
+    // Gentle decay per level (max -25 s at level 100)
+    final double decay = min((lv - 1) * 0.25, 25.0);
+    return max(base - decay, targets * 14.0);
+  }
+
   static bool isMilestone(int level) => level > 0 && level % 25 == 0;
 }
