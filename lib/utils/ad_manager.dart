@@ -45,7 +45,8 @@ class AdManager {
   Timer? _retryTimer;
 
   // Notifier so BannerAdWidget can rebuild when SDK becomes ready
-  final ValueNotifier<bool> sdkReadyNotifier = ValueNotifier(false);
+  final ValueNotifier<bool> sdkReadyNotifier    = ValueNotifier(false);
+  final ValueNotifier<bool> adBlockedNotifier   = ValueNotifier(false);
 
   // =========================================================================
   // INIT — call once from main(), without await
@@ -312,6 +313,7 @@ class AdManager {
     _interstitialAd?.dispose();
     _rewardedAd?.dispose();
     sdkReadyNotifier.dispose();
+    adBlockedNotifier.dispose();
   }
 }
 
