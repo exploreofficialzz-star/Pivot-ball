@@ -37,7 +37,7 @@ class _VirtualJoystickState extends State<VirtualJoystick>
 
   double get _containerH => widget.size * 2.0;
   double get _centerY    => _containerH / 2;
-  double get _maxTravel  => widget.size * 0.58; // px from centre
+  double get _maxTravel  => widget.size * 0.64; // px from centre — more travel range
   double get _knobRadius => widget.size * 0.22;
 
   @override

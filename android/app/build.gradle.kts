@@ -37,8 +37,7 @@ android {
         multiDexEnabled = true
 
         // Inject AdMob App ID into AndroidManifest at build time
-        manifestPlaceholders["admobAppId"] =
-            System.getenv("ADMOB_APP_ID_ANDROID") ?: "ca-app-pub-3940256099942544~3347511713"
+        // App ID is now hardcoded in AndroidManifest.xml directly
     }
 
     buildTypes {

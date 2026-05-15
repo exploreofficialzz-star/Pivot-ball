@@ -31,18 +31,21 @@ class Ball {
 
   void _step(double dt, double barAngle, double barY, Size screenSize) {
     // --- Gravity -------------------------------------------------------
-    // Along-bar component makes the ball roll with the tilt
-    final gravityAlong = GameConstants.gravity * sin(barAngle);
+    // Along-bar: pushes ball to roll with tilt (primary control mechanic)
+    final gravityAlong = GameConstants.gravity * sin(barAngle) * 1.35;
+    // Vertical: gentle fall so ball can drift toward holes
     velocity = Offset(
       velocity.dx + gravityAlong * dt,
-      velocity.dy + GameConstants.gravity * 0.1 * dt, // gentle vertical fall
+      velocity.dy + GameConstants.gravity * 0.18 * dt,
     );
 
-    // --- Friction (air drag) ------------------------------------------
-    velocity = Offset(
-      velocity.dx * GameConstants.friction,
-      velocity.dy * GameConstants.friction,
-    );
+    // --- Friction — tighter so ball responds crisply ------------------
+    const airFriction   = 0.985;
+    const rollFriction  = 0.975;
+    // Apply more friction when on bar (rolling) than when airborne
+    final onBarNow = velocity.dy.abs() < 20;
+    final fric = onBarNow ? rollFriction : airFriction;
+    velocity = Offset(velocity.dx * fric, velocity.dy * fric);
 
     // --- Integrate position -------------------------------------------
     position = Offset(
@@ -87,7 +90,7 @@ class Ball {
           velocity.dy - (1.0 + e) * vDotN * ny,
         );
         // Rolling friction on remaining velocity
-        velocity = Offset(velocity.dx * 0.92, velocity.dy * 0.92);
+        velocity = Offset(velocity.dx * 0.88, velocity.dy * 0.88);
       }
     }
 
@@ -135,8 +138,8 @@ class Bar {
 
   void update(double dt) {
     // Smooth lag towards target positions
-    leftY  += (targetLeftY  - leftY)  * min(1.0, dt * 10);
-    rightY += (targetRightY - rightY) * min(1.0, dt * 10);
+    leftY  += (targetLeftY  - leftY)  * min(1.0, dt * 14);
+    rightY += (targetRightY - rightY) * min(1.0, dt * 14);
   }
 
   List<Offset> getEndpoints(Size screenSize) {
@@ -243,8 +246,8 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     final maxY  = GameConstants.maxBarY * size.height;
 
     // Apply joystick inputs to bar targets
-    bar.targetLeftY  = (bar.leftY  - _leftInput  * dt * range * 2).clamp(minY, maxY);
-    bar.targetRightY = (bar.rightY - _rightInput * dt * range * 2).clamp(minY, maxY);
+    bar.targetLeftY  = (bar.leftY  - _leftInput  * dt * range * 3.2).clamp(minY, maxY);
+    bar.targetRightY = (bar.rightY - _rightInput * dt * range * 3.2).clamp(minY, maxY);
 
     bar.update(dt);
 

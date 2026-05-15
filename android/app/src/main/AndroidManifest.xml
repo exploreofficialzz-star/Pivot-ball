@@ -15,10 +15,10 @@
         android:allowBackup="true"
         android:fullBackupContent="true">
 
-        <!-- AdMob App ID -->
+        <!-- Real AdMob App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="${admobAppId}"/>
+            android:value="ca-app-pub-2492078126313994~4239557129"/>
 
         <activity
             android:name=".MainActivity"
@@ -40,7 +40,7 @@
             </intent-filter>
         </activity>
 
-        <!-- flutter_local_notifications receivers -->
+        <!-- flutter_local_notifications -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="false">
@@ -54,9 +54,7 @@
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false"/>
 
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2"/>
+        <meta-data android:name="flutterEmbedding" android:value="2"/>
     </application>
 
     <queries>

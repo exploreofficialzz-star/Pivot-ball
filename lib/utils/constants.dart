@@ -158,17 +158,8 @@ class LevelData {
     return min(12 + (lv - 30) ~/ 5, 16);
   }
 
-  /// Time increases with target count (more holes = more time needed),
-  /// but decays slowly at high levels to maintain pressure.
-  static double _timeLimit(int lv, int targets) {
-    // Base per target
-    const double perTarget = 22.0;
-    // Bonus for early levels
-    final double base = targets * perTarget + 10;
-    // Gentle decay per level (max -25 s at level 100)
-    final double decay = min((lv - 1) * 0.25, 25.0);
-    return max(base - decay, targets * 14.0);
-  }
+  /// Fixed 30 seconds on every level — pressure is constant.
+  static double _timeLimit(int lv, int targets) => 30.0;
 
   static bool isMilestone(int level) => level > 0 && level % 25 == 0;
 }

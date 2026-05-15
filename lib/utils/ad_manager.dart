@@ -9,25 +9,25 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 // Ad unit IDs — injected at build time via --dart-define.
 // Google official test IDs are the fallback (work on any device).
 // ---------------------------------------------------------------------------
-const _kTestBannerAndroid       = 'ca-app-pub-3940256099942544/6300978111';
-const _kTestBannerIos           = 'ca-app-pub-3940256099942544/2934735716';
-const _kTestInterstitialAndroid = 'ca-app-pub-3940256099942544/1033173712';
-const _kTestInterstitialIos     = 'ca-app-pub-3940256099942544/4411468910';
-const _kTestRewardedAndroid     = 'ca-app-pub-3940256099942544/5224354917';
-const _kTestRewardedIos         = 'ca-app-pub-3940256099942544/1712485313';
+const _kRealBannerAndroid       = 'ca-app-pub-2492078126313994/9256149896';
+const _kRealBannerIos           = 'ca-app-pub-2492078126313994/9256149896'; // update with iOS ID
+const _kRealInterstitialAndroid = 'ca-app-pub-2492078126313994/7943068221';
+const _kRealInterstitialIos     = 'ca-app-pub-2492078126313994/7943068221'; // update with iOS ID
+const _kRealRewardedAndroid     = 'ca-app-pub-2492078126313994/6629986555';
+const _kRealRewardedIos         = 'ca-app-pub-2492078126313994/6629986555'; // update with iOS ID
 
 const _bannerAndroid =
-    String.fromEnvironment('ADMOB_BANNER_ANDROID',       defaultValue: _kTestBannerAndroid);
+    String.fromEnvironment('ADMOB_BANNER_ANDROID',       defaultValue: _kRealBannerAndroid);
 const _bannerIos =
-    String.fromEnvironment('ADMOB_BANNER_IOS',           defaultValue: _kTestBannerIos);
+    String.fromEnvironment('ADMOB_BANNER_IOS',           defaultValue: _kRealBannerIos);
 const _interstitialAndroid =
-    String.fromEnvironment('ADMOB_INTERSTITIAL_ANDROID', defaultValue: _kTestInterstitialAndroid);
+    String.fromEnvironment('ADMOB_INTERSTITIAL_ANDROID', defaultValue: _kRealInterstitialAndroid);
 const _interstitialIos =
-    String.fromEnvironment('ADMOB_INTERSTITIAL_IOS',     defaultValue: _kTestInterstitialIos);
+    String.fromEnvironment('ADMOB_INTERSTITIAL_IOS',     defaultValue: _kRealInterstitialIos);
 const _rewardedAndroid =
-    String.fromEnvironment('ADMOB_REWARDED_ANDROID',     defaultValue: _kTestRewardedAndroid);
+    String.fromEnvironment('ADMOB_REWARDED_ANDROID',     defaultValue: _kRealRewardedAndroid);
 const _rewardedIos =
-    String.fromEnvironment('ADMOB_REWARDED_IOS',         defaultValue: _kTestRewardedIos);
+    String.fromEnvironment('ADMOB_REWARDED_IOS',         defaultValue: _kRealRewardedIos);
 
 class AdManager {
   static final AdManager _instance = AdManager._internal();
