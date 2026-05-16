@@ -6,28 +6,15 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 // ---------------------------------------------------------------------------
-// Ad unit IDs — injected at build time via --dart-define.
-// Google official test IDs are the fallback (work on any device).
+// Real production AdMob ad unit IDs — hardcoded directly.
+// No secrets or --dart-define needed. These are public-facing IDs.
 // ---------------------------------------------------------------------------
-const _kRealBannerAndroid       = 'ca-app-pub-2492078126313994/9256149896';
-const _kRealBannerIos           = 'ca-app-pub-2492078126313994/9256149896'; // update with iOS ID
-const _kRealInterstitialAndroid = 'ca-app-pub-2492078126313994/7943068221';
-const _kRealInterstitialIos     = 'ca-app-pub-2492078126313994/7943068221'; // update with iOS ID
-const _kRealRewardedAndroid     = 'ca-app-pub-2492078126313994/6629986555';
-const _kRealRewardedIos         = 'ca-app-pub-2492078126313994/6629986555'; // update with iOS ID
-
-const _bannerAndroid =
-    String.fromEnvironment('ADMOB_BANNER_ANDROID',       defaultValue: _kRealBannerAndroid);
-const _bannerIos =
-    String.fromEnvironment('ADMOB_BANNER_IOS',           defaultValue: _kRealBannerIos);
-const _interstitialAndroid =
-    String.fromEnvironment('ADMOB_INTERSTITIAL_ANDROID', defaultValue: _kRealInterstitialAndroid);
-const _interstitialIos =
-    String.fromEnvironment('ADMOB_INTERSTITIAL_IOS',     defaultValue: _kRealInterstitialIos);
-const _rewardedAndroid =
-    String.fromEnvironment('ADMOB_REWARDED_ANDROID',     defaultValue: _kRealRewardedAndroid);
-const _rewardedIos =
-    String.fromEnvironment('ADMOB_REWARDED_IOS',         defaultValue: _kRealRewardedIos);
+const _bannerAndroid       = 'ca-app-pub-2492078126313994/9256149896';
+const _bannerIos           = 'ca-app-pub-2492078126313994/9256149896'; // add iOS ID when available
+const _interstitialAndroid = 'ca-app-pub-2492078126313994/7943068221';
+const _interstitialIos     = 'ca-app-pub-2492078126313994/7943068221'; // add iOS ID when available
+const _rewardedAndroid     = 'ca-app-pub-2492078126313994/6629986555';
+const _rewardedIos         = 'ca-app-pub-2492078126313994/6629986555'; // add iOS ID when available
 
 class AdManager {
   static final AdManager _instance = AdManager._internal();
