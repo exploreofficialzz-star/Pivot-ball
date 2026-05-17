@@ -5,148 +5,159 @@ import '../utils/constants.dart';
 import '../utils/audio_manager.dart';
 
 // =============================================================================
-// Ball — physics body that rolls on the tilted bar
+// Ball — proper 2D physics with bar-surface interaction
 // =============================================================================
 class Ball {
   Offset position;
   Offset velocity;
   double radius;
+  bool   onBar = false; // was touching bar last frame
 
-  Ball({
-    required this.position,
-    this.velocity = Offset.zero,
-    this.radius   = GameConstants.ballRadius,
-  });
+  Ball({required this.position, this.velocity = Offset.zero,
+        this.radius = GameConstants.ballRadius});
 
-  /// [barAngle] — bar angle in radians (from Bar.angle)
-  /// [barY]    — bar surface Y at the ball's current X position (from Bar.getYatX)
-  ///             This is already the correct interpolated value; do NOT recalculate.
-  void update(double dt, double barAngle, double barY, Size screenSize) {
-    // Sub-step physics 2× per frame to prevent tunnelling at high speeds
-    const steps = 2;
-    for (int i = 0; i < steps; i++) {
-      _step(dt / steps, barAngle, barY, screenSize);
+  // [barVelY] = bar surface velocity at ball's X (px/s, negative = upward)
+  void update(double dt, double barAngle, double barY, double barVelY,
+              Size screenSize) {
+    // Sub-step for stability
+    for (int i = 0; i < 3; i++) {
+      _step(dt / 3, barAngle, barY, barVelY, screenSize);
     }
   }
 
-  void _step(double dt, double barAngle, double barY, Size screenSize) {
-    // --- Gravity -------------------------------------------------------
-    // Along-bar: pushes ball to roll with tilt (primary control mechanic)
-    final gravityAlong = GameConstants.gravity * sin(barAngle) * 1.35;
-    // Vertical: gentle fall so ball can drift toward holes
-    velocity = Offset(
-      velocity.dx + gravityAlong * dt,
-      velocity.dy + GameConstants.gravity * 0.18 * dt,
-    );
+  void _step(double dt, double barAngle, double barY, double barVelY,
+             Size screenSize) {
+    final barHW  = GameConstants.barWidth / 2;
+    final barL   = screenSize.width / 2 - barHW;
+    final barR   = screenSize.width / 2 + barHW;
+    final inBarX = position.dx >= barL - radius && position.dx <= barR + radius;
+    final touchingBar = inBarX && (position.dy + radius) >= barY - 2;
 
-    // --- Friction — tighter so ball responds crisply ------------------
-    const airFriction   = 0.985;
-    const rollFriction  = 0.975;
-    // Apply more friction when on bar (rolling) than when airborne
-    final onBarNow = velocity.dy.abs() < 20;
-    final fric = onBarNow ? rollFriction : airFriction;
-    velocity = Offset(velocity.dx * fric, velocity.dy * fric);
+    // ── Gravity ──────────────────────────────────────────────────────────────
+    // Lighter gravity when airborne so ball can arc upward to reach holes.
+    final gY = touchingBar ? GameConstants.gravity : GameConstants.gravity * 0.55;
+    velocity = Offset(velocity.dx, velocity.dy + gY * dt);
 
-    // --- Integrate position -------------------------------------------
-    position = Offset(
-      position.dx + velocity.dx * dt,
-      position.dy + velocity.dy * dt,
-    );
+    // ── Light air friction ────────────────────────────────────────────────────
+    velocity = Offset(velocity.dx * 0.998, velocity.dy * 0.998);
 
-    // --- Bar surface collision ----------------------------------------
-    final barHalfWidth = GameConstants.barWidth / 2;
-    final barLeft  = screenSize.width / 2 - barHalfWidth;
-    final barRight = screenSize.width / 2 + barHalfWidth;
+    // ── Integrate ─────────────────────────────────────────────────────────────
+    position = Offset(position.dx + velocity.dx * dt,
+                      position.dy + velocity.dy * dt);
 
-    // barY is already the correct bar surface Y at ball's X — use it directly.
-    final surfaceY = barY;
+    // ── Bar surface collision ─────────────────────────────────────────────────
+    final onBarNow = inBarX && (position.dy + radius) >= barY;
 
-    // Only collide when ball is horizontally within bar bounds (+ small margin)
-    final onBar = position.dx >= barLeft  - radius * 0.5 &&
-                  position.dx <= barRight + radius * 0.5;
+    if (onBarNow) {
+      // Push ball above surface
+      position = Offset(position.dx, barY - radius);
 
-    if (onBar && position.dy + radius > surfaceY) {
-      // 1. Push ball above bar surface
-      position = Offset(position.dx, surfaceY - radius);
+      // ── Launch mechanic ───────────────────────────────────────────────────
+      // When bar surface moves UP quickly (barVelY strongly negative),
+      // it acts as a catapult — transfer that upward velocity to the ball.
+      if (barVelY < -80) {
+        const maxLaunch = 680.0; // px/s cap
+        final launch = (barVelY * 0.85).clamp(-maxLaunch, 0.0);
+        if (velocity.dy > launch) {
+          velocity = Offset(velocity.dx, launch);
+        }
+      }
 
-      // 2. Decompose velocity into components relative to bar surface.
-      //    Bar unit vector (left → right along bar surface):
-      //      bx = cos(barAngle), by = sin(barAngle)
-      //    Outward normal (perpendicular, pointing away from bar toward ball):
-      //      nx =  sin(barAngle)   (for angle=0 → 0, small rightward lean)
-      //      ny = -cos(barAngle)   (for angle=0 → -1, i.e. pointing UP)
+      // ── Surface normal reflection ──────────────────────────────────────────
+      // Outward normal from tilted bar surface (points toward ball)
       final nx =  sin(barAngle);
       final ny = -cos(barAngle);
+      final vn = velocity.dx * nx + velocity.dy * ny; // velocity · normal
 
-      // Component of velocity along the outward normal
-      final vDotN = velocity.dx * nx + velocity.dy * ny;
-
-      // Only respond when ball moves INTO the bar (vDotN < 0 = moving against normal)
-      if (vDotN < 0) {
-        // Reflect normal component with restitution, keep tangential with rolling friction
-        final e = GameConstants.bounceDamping; // coefficient of restitution
+      if (vn < 0) { // moving into bar
+        final e = GameConstants.bounceDamping;
         velocity = Offset(
-          velocity.dx - (1.0 + e) * vDotN * nx,
-          velocity.dy - (1.0 + e) * vDotN * ny,
+          velocity.dx - (1.0 + e) * vn * nx,
+          velocity.dy - (1.0 + e) * vn * ny,
         );
-        // Rolling friction on remaining velocity
-        velocity = Offset(velocity.dx * 0.88, velocity.dy * 0.88);
+        // Rolling friction
+        velocity = Offset(velocity.dx * 0.82, velocity.dy * 0.82);
       }
+
+      // ── Gravity-along-bar rolling force ───────────────────────────────────
+      // This is what makes the ball roll when the bar is tilted.
+      // Applied continuously while ball is on bar.
+      final rollForce = GameConstants.gravity * sin(barAngle) * 1.4;
+      velocity = Offset(velocity.dx + rollForce * dt, velocity.dy);
     }
 
-    // --- Bar edge walls -----------------------------------------------
-    // Soft walls so the ball bounces at bar ends instead of clipping through
-    if (position.dx < barLeft + radius) {
-      position = Offset(barLeft + radius, position.dy);
-      velocity = Offset(-velocity.dx.abs() * 0.5, velocity.dy);
+    onBar = onBarNow;
+
+    // ── Speed cap ─────────────────────────────────────────────────────────────
+    const maxSpeed = 1100.0;
+    final spd = velocity.distance;
+    if (spd > maxSpeed) velocity = velocity * (maxSpeed / spd);
+
+    // ── Bar edge walls ────────────────────────────────────────────────────────
+    if (position.dx < barL + radius) {
+      position = Offset(barL + radius, position.dy);
+      velocity = Offset(-velocity.dx.abs() * 0.45, velocity.dy);
     }
-    if (position.dx > barRight - radius) {
-      position = Offset(barRight - radius, position.dy);
-      velocity = Offset(velocity.dx.abs() * -0.5, velocity.dy);
+    if (position.dx > barR - radius) {
+      position = Offset(barR - radius, position.dy);
+      velocity = Offset(velocity.dx.abs() * -0.45, velocity.dy);
     }
   }
-
-  Rect get bounds => Rect.fromCircle(center: position, radius: radius);
 }
 
 // =============================================================================
-// Bar — the tiltable platform controlled by the two joysticks
+// Bar — tracks velocity so it can transfer energy to the ball (catapult)
 // =============================================================================
 class Bar {
-  double leftY;
-  double rightY;
-  double targetLeftY;
-  double targetRightY;
+  double leftY, rightY, targetLeftY, targetRightY;
 
-  Bar({
-    this.leftY        = 0.5,
-    this.rightY       = 0.5,
-    this.targetLeftY  = 0.5,
-    this.targetRightY = 0.5,
-  });
+  double _prevLeftY  = 0;
+  double _prevRightY = 0;
+  double leftVelY    = 0; // px/s — negative = moving upward
+  double rightVelY   = 0;
 
-  /// Angle of the bar in radians. Positive = right side lower (in screen coords).
+  Bar({this.leftY = 0.75, this.rightY = 0.75,
+       this.targetLeftY = 0.75, this.targetRightY = 0.75}) {
+    _prevLeftY  = leftY;
+    _prevRightY = rightY;
+  }
+
   double get angle => atan2(rightY - leftY, GameConstants.barWidth);
 
-  /// Bar surface Y at screen X position [x].
-  /// Linear interpolation between the two endpoints.
   double getYatX(double x, Size screenSize) {
     final t = (x - (screenSize.width / 2 - GameConstants.barWidth / 2)) /
               GameConstants.barWidth;
     return leftY + (rightY - leftY) * t.clamp(0.0, 1.0);
   }
 
+  /// Interpolated bar surface velocity at a given X (px/s).
+  double getVelYatX(double x, Size screenSize) {
+    final t = (x - (screenSize.width / 2 - GameConstants.barWidth / 2)) /
+              GameConstants.barWidth;
+    return leftVelY + (rightVelY - leftVelY) * t.clamp(0.0, 1.0);
+  }
+
   void update(double dt) {
-    // Smooth lag towards target positions
-    leftY  += (targetLeftY  - leftY)  * min(1.0, dt * 14);
-    rightY += (targetRightY - rightY) * min(1.0, dt * 14);
+    _prevLeftY  = leftY;
+    _prevRightY = rightY;
+
+    // Smooth response — fast enough to feel snappy, not instant
+    final k = min(1.0, dt * 18.0);
+    leftY  += (targetLeftY  - leftY)  * k;
+    rightY += (targetRightY - rightY) * k;
+
+    // Track velocity (px/s) — used for launch mechanic
+    if (dt > 0) {
+      leftVelY  = (leftY  - _prevLeftY)  / dt;
+      rightVelY = (rightY - _prevRightY) / dt;
+    }
   }
 
   List<Offset> getEndpoints(Size screenSize) {
-    final halfWidth = GameConstants.barWidth / 2;
+    final hw = GameConstants.barWidth / 2;
     return [
-      Offset(screenSize.width / 2 - halfWidth, leftY),
-      Offset(screenSize.width / 2 + halfWidth, rightY),
+      Offset(screenSize.width / 2 - hw, leftY),
+      Offset(screenSize.width / 2 + hw, rightY),
     ];
   }
 }
@@ -175,50 +186,48 @@ class GameEngine extends StatefulWidget {
 class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
   late Ball ball;
   late Bar  bar;
-  double _leftInput  = 0;
-  double _rightInput = 0;
-  int    _score      = 0;
-  double   _timeLeft          = 60;
-  Timer?   _gameTimer;
-  final Set<int> _completedTargets = {}; // tracks which green holes ball has hit
-  bool   _gameOver   = false;
-  late AnimationController _gameLoopController;
-  DateTime? _lastFrameTime;
-  Size?     _screenSize;
+
+  // Raw joystick inputs — set by gameplay_screen via setLeftInput/setRightInput.
+  // Range: -1.0 (full up) to +1.0 (full down).
+  double _leftInput  = 0.0;
+  double _rightInput = 0.0;
+
+  int    _score    = 0;
+  double _timeLeft = 30.0;
+  Timer? _gameTimer;
+  bool   _gameOver = false;
+  final Set<int> _completedTargets = {};
+
+  late AnimationController _loop;
+  DateTime? _lastFrame;
+  Size?     _size;
 
   @override
   void initState() {
     super.initState();
     _timeLeft = widget.levelData.timeLimit;
-    _gameLoopController = AnimationController(
-      vsync: this,
+    _loop = AnimationController(
+      vsync:    this,
       duration: const Duration(days: 1),
-    )..addListener(_gameLoop);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initGame());
+    )..addListener(_tick);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
-  void _initGame() {
-    final size = MediaQuery.of(context).size;
-    _screenSize = size;
-
-    final barY = size.height * 0.75;
-    bar = Bar(
-      leftY: barY, rightY: barY,
-      targetLeftY: barY, targetRightY: barY,
-    );
-    ball = Ball(
-      position: Offset(size.width / 2, barY - GameConstants.ballRadius - 4),
-    );
+  void _init() {
+    final s = MediaQuery.of(context).size;
+    _size = s;
+    final barY = s.height * 0.73; // bar resting position
+    bar  = Bar(leftY: barY, rightY: barY,
+               targetLeftY: barY, targetRightY: barY);
+    ball = Ball(position: Offset(s.width / 2, barY - GameConstants.ballRadius - 2));
     _completedTargets.clear();
-
-    _gameLoopController.forward();
+    _loop.forward();
     _startTimer();
   }
 
   void _startTimer() {
-    _gameTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_gameOver) { timer.cancel(); return; }
+    _gameTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_gameOver) { t.cancel(); return; }
       setState(() {
         _timeLeft--;
         widget.onScoreUpdate(_score, _timeLeft.toInt());
@@ -231,52 +240,62 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     });
   }
 
-  void _gameLoop() {
-    if (_gameOver || _screenSize == null) return;
-
+  void _tick() {
+    if (_gameOver || _size == null) return;
     final now = DateTime.now();
-    final dt  = _lastFrameTime != null
-        ? min((now.difference(_lastFrameTime!).inMicroseconds / 1_000_000.0), 0.05)
+    final dt  = _lastFrame != null
+        ? (now.difference(_lastFrame!).inMicroseconds / 1e6).clamp(0.0, 0.05)
         : 0.016;
-    _lastFrameTime = now;
+    _lastFrame = now;
 
-    final size  = _screenSize!;
-    final range = (GameConstants.maxBarY - GameConstants.minBarY) * size.height;
-    final minY  = GameConstants.minBarY * size.height;
-    final maxY  = GameConstants.maxBarY * size.height;
+    final s     = _size!;
+    final minY  = GameConstants.minBarY * s.height;
+    final baseY = s.height * 0.73;
 
-    // Apply joystick inputs to bar targets
-    bar.targetLeftY  = (bar.leftY  - _leftInput  * dt * range * 3.2).clamp(minY, maxY);
-    bar.targetRightY = (bar.rightY - _rightInput * dt * range * 3.2).clamp(minY, maxY);
+    // ── Direct joystick → bar endpoint position ───────────────────────────────
+    // Joystick at -1 (knob full UP)   → bar side moves to minY (very high)
+    // Joystick at  0 (knob centred)   → bar side at baseY (neutral)
+    // Joystick at +1 (knob full DOWN) → bar side goes slightly below neutral
+    final upTravel   = baseY - minY;           // how far bar can go UP
+    final downTravel = s.height * 0.06;        // small downward movement allowed
 
-    bar.update(dt);
+    bar.targetLeftY = baseY + _leftInput * (
+        _leftInput < 0 ? upTravel : downTravel);
+    bar.targetRightY = baseY + _rightInput * (
+        _rightInput < 0 ? upTravel : downTravel);
+
+    // Clamp
+    bar.targetLeftY  = bar.targetLeftY .clamp(minY, baseY + downTravel);
+    bar.targetRightY = bar.targetRightY.clamp(minY, baseY + downTravel);
 
     // Clamp tilt angle
     if (bar.angle.abs() > GameConstants.maxTiltAngle) {
-      final sign  = bar.angle.sign;
       final maxDy = tan(GameConstants.maxTiltAngle) * GameConstants.barWidth;
       if (bar.rightY > bar.leftY) {
-        bar.targetRightY = bar.targetLeftY + sign * maxDy;
-        bar.rightY       = bar.targetRightY;
+        bar.targetRightY = bar.targetLeftY + maxDy;
       } else {
-        bar.targetLeftY  = bar.targetRightY - sign * maxDy;
-        bar.leftY        = bar.targetLeftY;
+        bar.targetLeftY  = bar.targetRightY + maxDy;
       }
     }
 
-    // Update ball — pass the already-correct barY at ball's X
-    ball.update(dt, bar.angle, bar.getYatX(ball.position.dx, size), size);
+    bar.update(dt);
 
-    // Hole collision check
+    // ── Ball update ───────────────────────────────────────────────────────────
+    final barYatBall  = bar.getYatX(ball.position.dx, s);
+    final barVelAtBall = bar.getVelYatX(ball.position.dx, s);
+    ball.update(dt, bar.angle, barYatBall, barVelAtBall, s);
+
+    // ── Hole check ────────────────────────────────────────────────────────────
     _checkHoles();
 
-    // Ball fell off bottom
-    if (ball.position.dy > size.height + 60) {
+    // ── Ball fell off bottom ──────────────────────────────────────────────────
+    if (ball.position.dy > s.height + 80) {
       setState(() {
         _gameOver = true;
         AudioManager.instance.playLose();
         widget.onGameEnd(_score, widget.levelData.level, false);
       });
+      return;
     }
 
     setState(() {});
@@ -284,265 +303,206 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
 
   void _checkHoles() {
     for (int i = 0; i < widget.levelData.holePositions.length; i++) {
-      // Skip already-completed targets
       if (_completedTargets.contains(i)) continue;
+      final dist = (ball.position - widget.levelData.holePositions[i]).distance;
+      if (dist >= GameConstants.holeRadius - 4) continue;
 
-      final holePos = widget.levelData.holePositions[i];
-      final dist    = (ball.position - holePos).distance;
-
-      if (dist < GameConstants.holeRadius - 4) {
-        if (widget.levelData.targetHoleIndices.contains(i)) {
-          // ── Hit a green target hole ───────────────────────────────────
-          _completedTargets.add(i);
-          AudioManager.instance.playClick();
-
-          final allDone = _completedTargets.length ==
-              widget.levelData.targetHoleIndices.length;
-
-          if (allDone) {
-            // ALL targets hit — level complete!
-            setState(() {
-              _gameOver = true;
-              _score   += GameConstants.pointsPerLevel * widget.levelData.level +
-                          (_timeLeft * 10).toInt() +
-                          (_completedTargets.length * 50);
-              AudioManager.instance.playWin();
-              widget.onGameEnd(_score, widget.levelData.level, true);
-            });
-          } else {
-            // More targets remain — reset ball to bar centre
-            setState(() {
-              final size = _screenSize!;
-              final barY = bar.getYatX(size.width / 2, size);
-              ball.position = Offset(size.width / 2, barY - GameConstants.ballRadius - 4);
-              ball.velocity = Offset.zero;
-              _leftInput    = 0;
-              _rightInput   = 0;
-            });
-            widget.onScoreUpdate(_score, _timeLeft.toInt());
-          }
-          return;
-
-        } else if (widget.levelData.deadHoleIndices.contains(i)) {
-          // ── Hit a red dead hole — instant lose ────────────────────────
+      if (widget.levelData.targetHoleIndices.contains(i)) {
+        _completedTargets.add(i);
+        AudioManager.instance.playClick();
+        final allDone = _completedTargets.length ==
+            widget.levelData.targetHoleIndices.length;
+        if (allDone) {
           setState(() {
             _gameOver = true;
-            AudioManager.instance.playLose();
-            widget.onGameEnd(_score, widget.levelData.level, false);
+            _score   += GameConstants.pointsPerLevel * widget.levelData.level +
+                        _timeLeft.toInt() * 10 +
+                        _completedTargets.length * 50;
+            AudioManager.instance.playWin();
+            widget.onGameEnd(_score, widget.levelData.level, true);
           });
-          return;
+        } else {
+          // Reset ball to bar centre, keep bar angle
+          final s   = _size!;
+          final barY = bar.getYatX(s.width / 2, s);
+          setState(() {
+            ball.position = Offset(s.width / 2, barY - GameConstants.ballRadius - 2);
+            ball.velocity = Offset.zero;
+            _leftInput    = 0;
+            _rightInput   = 0;
+          });
+          widget.onScoreUpdate(_score, _timeLeft.toInt());
         }
-        // Neutral hole — ball rolls over it, no effect
+        return;
+      }
+
+      if (widget.levelData.deadHoleIndices.contains(i)) {
+        setState(() {
+          _gameOver = true;
+          AudioManager.instance.playLose();
+          widget.onGameEnd(_score, widget.levelData.level, false);
+        });
+        return;
       }
     }
   }
 
-  void setLeftInput(double value)  => _leftInput  = value;
-  void setRightInput(double value) => _rightInput = value;
+  // ── Public API ──────────────────────────────────────────────────────────────
+  void setLeftInput(double v)  => _leftInput  = v;
+  void setRightInput(double v) => _rightInput = v;
 
-  /// Called from gameplay_screen when user watches a rewarded ad
-  void addBonusTime(int seconds) {
-    setState(() => _timeLeft += seconds);
+  void addBonusTime(int s) {
+    setState(() => _timeLeft += s);
     widget.onScoreUpdate(_score, _timeLeft.toInt());
   }
 
-  /// Fully restores the game after a rewarded-ad continue.
-  /// Resets ball + bar to start position, unfreezes the loop, restarts timer.
-  void resetAndResume(int bonusSeconds) {
-    if (!mounted || _screenSize == null) return;
-    final size  = _screenSize!;
-    final barY  = size.height * GameConstants.maxBarY;
-
-    // 1. Reset ball to centre of bar
-    ball.position = Offset(size.width / 2, barY - GameConstants.ballRadius - 4);
+  void resetAndResume(int bonus) {
+    if (!mounted || _size == null) return;
+    final s    = _size!;
+    final barY = s.height * 0.73;
+    ball.position = Offset(s.width / 2, barY - GameConstants.ballRadius - 2);
     ball.velocity = Offset.zero;
-
-    // 2. Straighten bar
-    bar.leftY        = barY;
-    bar.rightY       = barY;
-    bar.targetLeftY  = barY;
-    bar.targetRightY = barY;
-
-    // 3. Clear joystick inputs
+    bar.leftY  = bar.rightY  = barY;
+    bar.targetLeftY = bar.targetRightY = barY;
     _leftInput  = 0;
     _rightInput = 0;
-
-    // 4. Unfreeze engine and add bonus time
     _completedTargets.clear();
-    setState(() {
-      _gameOver  = false;
-      _timeLeft += bonusSeconds;
-    });
-
-    // 5. Restart timer (it cancelled itself when game ended)
+    setState(() { _gameOver = false; _timeLeft += bonus; });
     _gameTimer?.cancel();
     _startTimer();
-
-    // 6. Restart the animation loop (it also stopped)
-    _lastFrameTime = null;
-    _gameLoopController.stop();
-    _gameLoopController.forward();
-
+    _lastFrame = null;
+    _loop.stop();
+    _loop.forward();
     widget.onScoreUpdate(_score, _timeLeft.toInt());
   }
 
   @override
   void dispose() {
     _gameTimer?.cancel();
-    _gameLoopController.dispose();
+    _loop.dispose();
     super.dispose();
   }
 
+  // ── Build ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    if (_screenSize == null) return const SizedBox.expand();
+    if (_size == null) return const SizedBox.expand();
+    final s   = _size!;
+    final eps = bar.getEndpoints(s);
 
-    final size         = _screenSize!;
-    final barEndpoints = bar.getEndpoints(size);
+    return Stack(children: [
+      // Background
+      Positioned.fill(child: Image.asset('assets/images/game_bg.jpg', fit: BoxFit.cover)),
+      Positioned.fill(child: Container(color: Colors.black.withOpacity(0.15))),
 
-    return Stack(
-      children: [
-        // Background
-        Positioned.fill(
-          child: Image.asset('assets/images/game_bg.jpg', fit: BoxFit.cover),
-        ),
-        Positioned.fill(
-          child: Container(color: Colors.black.withOpacity(0.15)),
-        ),
-
-        // Holes
-        ...List.generate(widget.levelData.holePositions.length, (index) {
-          final pos      = widget.levelData.holePositions[index];
-          final isTarget    = widget.levelData.targetHoleIndices.contains(index);
-          final isDead     = widget.levelData.deadHoleIndices.contains(index);
-          final isComplete = _completedTargets.contains(index);
-
-          return Positioned(
-            left: pos.dx - GameConstants.holeRadius,
-            top:  pos.dy - GameConstants.holeRadius,
-            child: Container(
-              width:  GameConstants.holeRadius * 2,
-              height: GameConstants.holeRadius * 2,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isComplete
-                    ? Colors.grey.withOpacity(0.25)
-                    : isTarget
-                        ? GameConstants.neonGreen.withOpacity(0.3)
-                        : isDead
-                            ? GameConstants.neonRed.withOpacity(0.3)
-                            : Colors.black.withOpacity(0.5),
-                border: Border.all(
-                  color: isComplete
-                      ? Colors.grey
-                      : isTarget
-                          ? GameConstants.neonGreen
-                          : isDead
-                              ? GameConstants.neonRed
-                              : Colors.white.withOpacity(0.3),
-                  width: isTarget || isDead ? 3 : 1.5,
-                ),
-                boxShadow: isComplete ? null
-                    : isTarget
-                        ? [BoxShadow(color: GameConstants.neonGreen.withOpacity(0.3), blurRadius: 8, spreadRadius: 1)]
-                        : isDead
-                            ? [BoxShadow(color: GameConstants.neonRed.withOpacity(0.2), blurRadius: 6, spreadRadius: 1)]
-                            : null,
-              ),
-              child: Center(
-                child: Container(
-                  width:  GameConstants.holeRadius * 1.2,
-                  height: GameConstants.holeRadius * 1.2,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(colors: [
-                      Colors.black.withOpacity(0.9),
-                      Colors.black.withOpacity(0.6),
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-
-        // Bar
-        CustomPaint(
-          size: size,
-          painter: BarPainter(
-            start: barEndpoints[0],
-            end:   barEndpoints[1],
-            color: Colors.amber.shade400,
-          ),
-        ),
-
-        // Ball
-        Positioned(
-          left: ball.position.dx - ball.radius,
-          top:  ball.position.dy - ball.radius,
+      // Holes
+      ...List.generate(widget.levelData.holePositions.length, (i) {
+        final pos      = widget.levelData.holePositions[i];
+        final isTgt    = widget.levelData.targetHoleIndices.contains(i);
+        final isDead   = widget.levelData.deadHoleIndices.contains(i);
+        final isDone   = _completedTargets.contains(i);
+        final r        = GameConstants.holeRadius;
+        final col      = isDone    ? Colors.grey
+                       : isTgt    ? GameConstants.neonGreen
+                       : isDead   ? GameConstants.neonRed
+                                  : Colors.white.withOpacity(0.25);
+        return Positioned(
+          left: pos.dx - r, top: pos.dy - r,
           child: Container(
-            width:  ball.radius * 2,
-            height: ball.radius * 2,
+            width: r * 2, height: r * 2,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const RadialGradient(
-                colors: [Colors.white, Color(0xFFCCCCCC), Color(0xFF888888)],
-                stops:  [0.0, 0.3, 1.0],
-              ),
-              boxShadow: [
-                BoxShadow(color: Colors.white.withOpacity(0.18), blurRadius: 4, spreadRadius: 0),
-              ],
+              color: isDone ? Colors.grey.withOpacity(0.2)
+                   : isTgt ? GameConstants.neonGreen.withOpacity(0.25)
+                   : isDead ? GameConstants.neonRed.withOpacity(0.25)
+                            : Colors.black.withOpacity(0.45),
+              border: Border.all(color: col, width: isTgt || isDead ? 3 : 1.5),
+              boxShadow: isDone ? null : (isTgt || isDead)
+                  ? [BoxShadow(color: col.withOpacity(0.35),
+                               blurRadius: 10, spreadRadius: 2)]
+                  : null,
+            ),
+            child: Center(
+              child: Text(isDone ? '✓' : '',
+                style: const TextStyle(color: Colors.white70,
+                                       fontSize: 14, fontWeight: FontWeight.bold)),
             ),
           ),
-        ),
+        );
+      }),
 
-        // HUD
-        Positioned(
-          top:   MediaQuery.of(context).padding.top + 10,
-          left:  16,
-          right: 16,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _hud('LEVEL ${widget.levelData.level}',
-                   GameConstants.goldColor.withOpacity(0.25), GameConstants.goldColor, 16),
-              _timerHud(),
-              _hud('$_score',
-                   GameConstants.neonBlue.withOpacity(0.25), GameConstants.neonBlue, 18),
-            ],
+      // Bar
+      CustomPaint(size: s, painter: _BarPainter(eps[0], eps[1])),
+
+      // Ball
+      Positioned(
+        left: ball.position.dx - ball.radius,
+        top:  ball.position.dy - ball.radius,
+        child: Container(
+          width: ball.radius * 2, height: ball.radius * 2,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const RadialGradient(
+              colors: [Colors.white, Color(0xFFDDDDDD), Color(0xFF888888)],
+              stops:  [0.0, 0.35, 1.0],
+            ),
+            boxShadow: [BoxShadow(color: Colors.white.withOpacity(0.3),
+                                  blurRadius: 6, spreadRadius: 1)],
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _hud(String text, Color border, Color textColor, double size) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
       ),
-      child: Text(text, style: TextStyle(color: textColor, fontSize: size, fontWeight: FontWeight.bold, letterSpacing: 2)),
-    );
+
+      // HUD
+      Positioned(
+        top:  MediaQuery.of(context).padding.top + 8,
+        left: 12, right: 12,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _pill('LEVEL ${widget.levelData.level}',
+                  GameConstants.goldColor, 13),
+            // Progress counter: targets hit / total
+            _pill(
+              '${_completedTargets.length}/${widget.levelData.targetHoleIndices.length} ●',
+              GameConstants.neonGreen, 13,
+            ),
+            _timerPill(),
+          ],
+        ),
+      ),
+    ]);
   }
 
-  Widget _timerHud() {
-    final urgent = _timeLeft <= 10;
+  Widget _pill(String t, Color c, double fs) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.black.withOpacity(0.65),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: c.withOpacity(0.35)),
+    ),
+    child: Text(t, style: TextStyle(color: c, fontSize: fs,
+                                    fontWeight: FontWeight.bold)),
+  );
+
+  Widget _timerPill() {
+    final urgent = _timeLeft <= 8;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: urgent ? GameConstants.neonRed.withOpacity(0.3) : Colors.black.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: urgent ? GameConstants.neonRed : Colors.white.withOpacity(0.5)),
+        color: urgent ? GameConstants.neonRed.withOpacity(0.3)
+                      : Colors.black.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: urgent ? GameConstants.neonRed : Colors.white.withOpacity(0.4)),
       ),
       child: Row(children: [
-        Icon(Icons.timer, color: urgent ? GameConstants.neonRed : Colors.white, size: 18),
-        const SizedBox(width: 6),
+        Icon(Icons.timer, size: 16,
+             color: urgent ? GameConstants.neonRed : Colors.white70),
+        const SizedBox(width: 4),
         Text('${_timeLeft.toInt()}s',
-             style: TextStyle(color: urgent ? GameConstants.neonRed : Colors.white,
-                              fontSize: 18, fontWeight: FontWeight.bold)),
+          style: TextStyle(
+            color: urgent ? GameConstants.neonRed : Colors.white,
+            fontSize: 16, fontWeight: FontWeight.bold)),
       ]),
     );
   }
@@ -551,42 +511,40 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
 // =============================================================================
 // Bar painter
 // =============================================================================
-class BarPainter extends CustomPainter {
-  final Offset start;
-  final Offset end;
-  final Color  color;
-
-  BarPainter({required this.start, required this.end, required this.color});
+class _BarPainter extends CustomPainter {
+  final Offset a, b;
+  _BarPainter(this.a, this.b);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final glowPaint = Paint()
-      ..strokeWidth = GameConstants.barHeight + 10
+    final glow = Paint()
+      ..strokeWidth = GameConstants.barHeight + 8
       ..strokeCap   = StrokeCap.round
-      ..color       = color.withOpacity(0.12)
-      ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 5);
+      ..color       = Colors.amber.withOpacity(0.14)
+      ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 6);
 
-    final barPaint = Paint()
+    final bar = Paint()
       ..strokeWidth = GameConstants.barHeight
       ..strokeCap   = StrokeCap.round
       ..shader      = LinearGradient(colors: [
-          color.withOpacity(0.8), color, color.withOpacity(0.8),
-        ]).createShader(Rect.fromPoints(start, end));
+          Colors.amber.shade300.withOpacity(0.85),
+          Colors.amber.shade400,
+          Colors.amber.shade300.withOpacity(0.85),
+        ]).createShader(Rect.fromPoints(a, b));
 
-    final highlightPaint = Paint()
+    final shine = Paint()
       ..strokeWidth = 2
       ..strokeCap   = StrokeCap.round
-      ..color       = Colors.white.withOpacity(0.5);
+      ..color       = Colors.white.withOpacity(0.45);
 
-    canvas.drawLine(start, end, glowPaint);
-    canvas.drawLine(start, end, barPaint);
+    canvas.drawLine(a, b, glow);
+    canvas.drawLine(a, b, bar);
 
-    final dir    = (end - start);
-    final angle  = dir.direction;
-    final offset = Offset(-sin(angle) * 2, cos(angle) * 2);
-    canvas.drawLine(start + offset, end + offset, highlightPaint);
+    // Highlight along top edge
+    final ang = (b - a).direction;
+    final off = Offset(-sin(ang) * 2, cos(ang) * 2);
+    canvas.drawLine(a + off, b + off, shine);
   }
 
-  @override
-  bool shouldRepaint(covariant CustomPainter _) => true;
+  @override bool shouldRepaint(covariant CustomPainter _) => true;
 }

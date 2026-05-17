@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
 
-/// VirtualJoystick — vertical rail, snap-to-finger, spring return
+/// VirtualJoystick — absolute-position tracking, spring return
 ///
-/// Feel improvements over previous version:
-///  • onVerticalDragUpdate tracks absolute local position → knob
-///    always sits exactly under the finger, no drift
-///  • During drag: zero animation delay (Positioned, not AnimatedPositioned)
-///  • On release: 250ms spring-back with elasticOut
-///  • Larger travel range (60% of container half-height)
+/// Design principles:
+///  • Knob tracks absolute finger Y from the joystick centre at ALL times.
+///    No delta accumulation = no drift. Knob is always exactly under finger.
+///  • Outputs a normalised value: -1.0 (full up) to +1.0 (full down).
+///    Caller sees positive = push down, negative = push up.
+///  • Spring return on release.
 class VirtualJoystick extends StatefulWidget {
   final double size;
-  final Color color;
-  final Function(double) onMove;
-  final VoidCallback onRelease;
+  final Color  color;
+  final void Function(double) onMove;    // -1..+1, called every update
+  final VoidCallback           onRelease;
 
   const VirtualJoystick({
     super.key,
-    this.size = 100,
+    this.size = 80,
     this.color = Colors.red,
     required this.onMove,
     required this.onRelease,
@@ -28,149 +28,173 @@ class VirtualJoystick extends StatefulWidget {
 
 class _VirtualJoystickState extends State<VirtualJoystick>
     with SingleTickerProviderStateMixin {
-  // Normalised position: -1.0 (full up) → 0 (centre) → +1.0 (full down)
-  double _value  = 0.0;
+
+  double _norm   = 0.0;   // normalised -1..1
   bool   _active = false;
 
-  late AnimationController _springCtrl;
+  late AnimationController _spring;
   late Animation<double>   _springAnim;
 
-  double get _containerH => widget.size * 2.0;
-  double get _centerY    => _containerH / 2;
-  double get _maxTravel  => widget.size * 0.64; // px from centre — more travel range
-  double get _knobRadius => widget.size * 0.22;
+  // Layout constants derived from widget.size
+  double get _h          => widget.size * 2.2;   // total container height
+  double get _centreY    => _h / 2;
+  double get _maxTravel  => widget.size * 0.70;  // px from centre the knob can travel
+  double get _knobR      => widget.size * 0.24;
 
   @override
   void initState() {
     super.initState();
-    _springCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 260),
+    _spring = AnimationController(
+      vsync:    this,
+      duration: const Duration(milliseconds: 300),
     );
   }
 
   @override
   void dispose() {
-    _springCtrl.dispose();
+    _spring.dispose();
     super.dispose();
   }
 
-  void _onDragStart(DragStartDetails d) {
-    _springCtrl.stop();
-    final offset = (d.localPosition.dy - _centerY) / _maxTravel;
-    setState(() {
-      _active = true;
-      _value  = offset.clamp(-1.0, 1.0);
-    });
-    widget.onMove(-_value); // negative: up = positive input
+  // ── Gesture handlers ──────────────────────────────────────────────────────
+
+  void _onPanStart(DragStartDetails d) {
+    _spring.stop();
+    _setFromLocal(d.localPosition.dy);
+    setState(() => _active = true);
   }
 
-  void _onDragUpdate(DragUpdateDetails d) {
-    // Track absolute finger position for perfect snap
-    final raw = (_value * _maxTravel + d.delta.dy) / _maxTravel;
-    setState(() => _value = raw.clamp(-1.0, 1.0));
-    widget.onMove(-_value);
+  void _onPanUpdate(DragUpdateDetails d) {
+    _setFromLocal(d.localPosition.dy);
   }
 
-  void _onDragEnd(DragEndDetails? d) {
+  void _onPanEnd(DragEndDetails? _) {
     widget.onRelease();
-    _springAnim = Tween<double>(begin: _value, end: 0.0).animate(
-      CurvedAnimation(parent: _springCtrl, curve: Curves.elasticOut),
-    )..addListener(() => setState(() => _value = _springAnim.value));
+    _springAnim = Tween<double>(begin: _norm, end: 0.0)
+        .animate(CurvedAnimation(parent: _spring, curve: Curves.elasticOut))
+      ..addListener(_onSpringTick);
     setState(() => _active = false);
-    _springCtrl.forward(from: 0);
+    _spring.forward(from: 0);
   }
+
+  void _onSpringTick() {
+    setState(() => _norm = _springAnim.value);
+    // Notify continuously during spring so bar returns smoothly
+    widget.onMove(_norm);
+  }
+
+  /// Convert raw local Y position to normalised knob value and notify.
+  void _setFromLocal(double localY) {
+    final offset = localY - _centreY;
+    final clamped = offset.clamp(-_maxTravel, _maxTravel);
+    final norm    = clamped / _maxTravel;
+    setState(() => _norm = norm);
+    widget.onMove(_norm);  // positive = pushed down, negative = pushed up
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final knobY = _centerY + (_value * _maxTravel) - _knobRadius;
+    final knobTop = _centreY + (_norm * _maxTravel) - _knobR;
 
     return GestureDetector(
-      onVerticalDragStart:  _onDragStart,
-      onVerticalDragUpdate: _onDragUpdate,
-      onVerticalDragEnd:    _onDragEnd,
-      onVerticalDragCancel: () => _onDragEnd(null),
-      child: Container(
+      // Use onPan (not onVerticalDrag) so it captures immediately without
+      // competing with scroll recognisers.
+      onPanStart:  _onPanStart,
+      onPanUpdate: _onPanUpdate,
+      onPanEnd:    _onPanEnd,
+      onPanCancel: () => _onPanEnd(null),
+      child: SizedBox(
         width:  widget.size,
-        height: _containerH,
-        decoration: BoxDecoration(
-          color:        Colors.black.withOpacity(0.35),
-          borderRadius: BorderRadius.circular(widget.size / 2),
-          border: Border.all(
-            color: widget.color.withOpacity(_active ? 0.7 : 0.35),
-            width: _active ? 2.5 : 2.0,
-          ),
-          boxShadow: _active
-              ? [BoxShadow(
-                  color:       widget.color.withOpacity(0.2),
-                  blurRadius:  20,
-                  spreadRadius: 4,
-                )]
-              : [],
-        ),
+        height: _h,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // Vertical rail line
-            Positioned(
-              left:   widget.size / 2 - 1,
-              top:    widget.size * 0.2,
-              bottom: widget.size * 0.2,
+
+            // Track
+            Positioned.fill(
               child: Container(
-                width: 2,
                 decoration: BoxDecoration(
-                  color: widget.color.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(1),
+                  color:        Colors.black.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(widget.size / 2),
+                  border: Border.all(
+                    color: widget.color.withOpacity(_active ? 0.75 : 0.35),
+                    width: _active ? 2.5 : 2.0,
+                  ),
+                  boxShadow: _active ? [
+                    BoxShadow(
+                      color:        widget.color.withOpacity(0.25),
+                      blurRadius:   24,
+                      spreadRadius: 4,
+                    ),
+                  ] : [],
                 ),
               ),
             ),
 
             // Centre notch
             Positioned(
-              top:  _centerY - 1,
-              left: widget.size * 0.25,
-              right: widget.size * 0.25,
+              top:   _centreY - 1.5,
+              left:  widget.size * 0.20,
+              right: widget.size * 0.20,
               child: Container(
-                height: 2,
+                height: 3,
                 decoration: BoxDecoration(
-                  color: widget.color.withOpacity(0.35),
-                  borderRadius: BorderRadius.circular(1),
+                  color:        widget.color.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
 
-            // Knob — no animation during drag, spring only on release
+            // Rail line
             Positioned(
-              top:  knobY,
-              left: widget.size / 2 - _knobRadius,
+              left:   widget.size / 2 - 1.5,
+              top:    _centreY - _maxTravel,
+              height: _maxTravel * 2,
               child: Container(
-                width:  _knobRadius * 2,
-                height: _knobRadius * 2,
+                width: 3,
+                decoration: BoxDecoration(
+                  color:        widget.color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // Knob — position is absolute, tracks finger exactly
+            Positioned(
+              top:  knobTop,
+              left: widget.size / 2 - _knobR,
+              child: Container(
+                width:  _knobR * 2,
+                height: _knobR * 2,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: [
-                    widget.color.withOpacity(_active ? 1.0 : 0.65),
-                    widget.color.withOpacity(_active ? 0.7 : 0.4),
-                  ]),
-                  boxShadow: _active
-                      ? [BoxShadow(
-                          color:       widget.color.withOpacity(0.55),
-                          blurRadius:  16,
-                          spreadRadius: 3,
-                        )]
-                      : [],
+                  gradient: RadialGradient(
+                    colors: [
+                      widget.color.withOpacity(_active ? 1.0 : 0.7),
+                      widget.color.withOpacity(_active ? 0.7 : 0.4),
+                    ],
+                  ),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.35),
+                    color: Colors.white.withOpacity(0.4),
                     width: 1.5,
                   ),
+                  boxShadow: _active ? [
+                    BoxShadow(
+                      color:        widget.color.withOpacity(0.6),
+                      blurRadius:   18,
+                      spreadRadius: 3,
+                    ),
+                  ] : [],
                 ),
                 child: Center(
                   child: Container(
-                    width:  _knobRadius * 0.38,
-                    height: _knobRadius * 0.38,
+                    width:  _knobR * 0.35,
+                    height: _knobR * 0.35,
                     decoration: BoxDecoration(
-                      color:  Colors.white.withOpacity(0.45),
-                      shape:  BoxShape.circle,
+                      color: Colors.white.withOpacity(0.5),
+                      shape: BoxShape.circle,
                     ),
                   ),
                 ),
@@ -179,14 +203,14 @@ class _VirtualJoystickState extends State<VirtualJoystick>
 
             // Label
             Positioned(
-              bottom: 8,
+              bottom: 6,
               left: 0, right: 0,
               child: Center(
                 child: Text(
                   widget.color == Colors.red ? 'L' : 'R',
                   style: TextStyle(
-                    color:      widget.color.withOpacity(0.5),
-                    fontSize:   13,
+                    color:      widget.color.withOpacity(0.55),
+                    fontSize:   12,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
