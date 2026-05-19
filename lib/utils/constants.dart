@@ -71,61 +71,56 @@ class LevelData {
   // =========================================================================
   // Generator
   // =========================================================================
+  // Bar rests at 58% of screen height. Holes are placed BELOW it
+  // so the ball naturally rolls off the bar and falls into them —
+  // like tilting a tray to guide a marble into a cup.
+  static const double barRestFraction = 0.58;
+
   static LevelData generate(int level, Size screenSize) {
     final rng = Random(level * 1337 + 7);
 
-    // ── Difficulty params ─────────────────────────────────────────────────
     final int numTargets = _numTargets(level);
     final int numDead    = _numDead(level);
-    final int numNeutral = max(1, level ~/ 5);        // neutral/empty holes
+    final int numNeutral = max(1, level ~/ 6);
     final int numHoles   = numTargets + numDead + numNeutral;
-    final double time    = _timeLimit(level, numTargets);
 
-    // ── Hole positions ────────────────────────────────────────────────────
-    final playW  = screenSize.width  * 0.78;
-    final playH  = screenSize.height * 0.50;
-    final startX = (screenSize.width  - playW) / 2;
-    final startY = screenSize.height  * 0.17;
+    // Holes are BELOW the bar (barRestFraction to 0.94 of screen height).
+    // Ball rolls off bar edge → falls down → enters hole naturally.
+    final barY   = screenSize.height * barRestFraction; // bar Y position
+    final holeStartY = barY + screenSize.height * 0.10; // 10% below bar
+    final holeEndY   = screenSize.height * 0.94;
+    final holeRangeY = holeEndY - holeStartY;
 
-    final cols   = 3;
+    final playW  = screenSize.width * 0.88;
+    final startX = (screenSize.width - playW) / 2;
+    final cols   = min(numHoles, 4);
     final rows   = (numHoles / cols).ceil();
-    final List<Offset> holes = [];
 
+    final List<Offset> holes = [];
     for (int i = 0; i < numHoles; i++) {
       final row = i ~/ cols;
       final col = i % cols;
-      final jx  = (rng.nextDouble() - 0.5) * playW * 0.18;
-      final jy  = (rng.nextDouble() - 0.5) * playH * 0.12;
+      final jx  = (rng.nextDouble() - 0.5) * (playW / cols) * 0.35;
+      final jy  = (rng.nextDouble() - 0.5) * (holeRangeY / (rows + 1)) * 0.3;
       final x   = startX + (playW / max(cols - 1, 1)) * col + jx;
-      final y   = startY + (playH / (rows + 1)) * (row + 1) + jy;
+      final y   = holeStartY + (holeRangeY / (rows + 1)) * (row + 1) + jy;
       holes.add(Offset(
         x.clamp(startX + 28, startX + playW - 28),
-        y.clamp(startY + 28, startY + playH - 28),
+        y.clamp(holeStartY + 20, holeEndY - 20),
       ));
     }
 
-    // ── Assign roles randomly ─────────────────────────────────────────────
     final indices = List<int>.generate(numHoles, (i) => i)..shuffle(rng);
     final targetIndices = indices.sublist(0, numTargets);
     final deadIndices   = indices.sublist(numTargets, numTargets + numDead);
-
-    // ── Bumper pegs ───────────────────────────────────────────────────────
-    final numBumpers = _numBumpers(level);
-    final List<Offset> bumpers = [
-      for (int i = 0; i < numBumpers; i++)
-        Offset(
-          startX + rng.nextDouble() * playW,
-          startY + rng.nextDouble() * playH * 0.65,
-        ),
-    ];
 
     return LevelData(
       level:             level,
       holePositions:     holes,
       targetHoleIndices: targetIndices,
       deadHoleIndices:   deadIndices,
-      timeLimit:         time,
-      bumperPegs:        bumpers,
+      timeLimit:         30.0,
+      bumperPegs:        [],
     );
   }
 
