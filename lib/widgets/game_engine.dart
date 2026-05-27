@@ -286,6 +286,47 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     _rightInput = value;
   }
 
+  /// Resets the current level and adds [bonusSeconds] to the time limit.
+  /// Called after the player watches a rewarded ad to continue after game over.
+  void resetAndResume(int bonusSeconds) {
+    _gameTimer?.cancel();
+    if (_screenSize == null) return;
+
+    final size = _screenSize!;
+    final barY = size.height * 0.75;
+
+    setState(() {
+      _gameOver  = false;
+      _timeLeft  = bonusSeconds.toDouble();
+      _leftInput  = 0;
+      _rightInput = 0;
+
+      bar = Bar(
+        leftY:       barY,
+        rightY:      barY,
+        targetLeftY: barY,
+        targetRightY: barY,
+      );
+      ball = Ball(
+        position: Offset(size.width / 2, barY - GameConstants.ballRadius - 5),
+      );
+    });
+
+    if (!_gameLoopController.isAnimating) {
+      _gameLoopController.forward();
+    }
+    _startTimer();
+  }
+
+  /// Adds [seconds] to the current countdown timer during active gameplay.
+  /// Called by the in-game +30s rewarded-ad button.
+  void addBonusTime(int seconds) {
+    if (_gameOver) return;
+    setState(() {
+      _timeLeft += seconds.toDouble();
+    });
+  }
+
   @override
   void dispose() {
     _gameTimer?.cancel();

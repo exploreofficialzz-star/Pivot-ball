@@ -146,15 +146,5 @@ class LevelData {
     return min(9 + (lv - 50) ~/ 5, 14);
   }
 
-  static int _numBumpers(int lv) {
-    if (lv < 8)   return 0;
-    if (lv <= 15) return lv - 7;
-    if (lv <= 30) return min(8 + (lv - 15) ~/ 2, 12);
-    return min(12 + (lv - 30) ~/ 5, 16);
-  }
-
-  /// Fixed 30 seconds on every level — pressure is constant.
-  static double _timeLimit(int lv, int targets) => 30.0;
-
   static bool isMilestone(int level) => level > 0 && level % 25 == 0;
 }
