@@ -445,9 +445,8 @@ class AdManager {
 // ---------------------------------------------------------------------------
 class BannerAdWidget extends StatefulWidget {
   final String adUnitId;
-  final VoidCallback? onFailed;
 
-  const BannerAdWidget({super.key, required this.adUnitId, this.onFailed});
+  const BannerAdWidget({super.key, required this.adUnitId});
 
   @override
   State<BannerAdWidget> createState() => _BannerAdWidgetState();
@@ -488,15 +487,9 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
           ad.dispose();
           _bannerAd = null;
           AdManager.instance._trackFailure('banner', error);
-          widget.onFailed?.call();
           if (_attempts < 3 && mounted) {
             final delay = [3, 8, 20][_attempts];
             _attempts++;
-            Future.delayed(Duration(seconds: delay), () {
-              if (mounted) _load();
-            });
-          }
-        },
             Future.delayed(Duration(seconds: delay), () {
               if (mounted) _load();
             });
