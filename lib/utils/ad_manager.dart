@@ -6,25 +6,124 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 // ---------------------------------------------------------------------------
-// Real production AdMob ad unit IDs — hardcoded directly.
-// No secrets or --dart-define needed. These are public-facing IDs.
+// Ad unit IDs
+//
+//  ⚠️  TEST MODE IS ON — set _useTestAds = false before releasing to store.
+//
+//  Test IDs are Google's official ones and always fill; use them during
+//  development so you never drain production quota or risk policy flags.
 // ---------------------------------------------------------------------------
-const _bannerAndroid       = 'ca-app-pub-2492078126313994/9256149896';
-const _bannerIos           = 'ca-app-pub-2492078126313994/9256149896'; // add iOS ID when available
-const _interstitialAndroid = 'ca-app-pub-2492078126313994/7943068221';
-const _interstitialIos     = 'ca-app-pub-2492078126313994/7943068221'; // add iOS ID when available
-const _rewardedAndroid     = 'ca-app-pub-2492078126313994/6629986555';
-const _rewardedIos         = 'ca-app-pub-2492078126313994/6629986555'; // add iOS ID when available
+const _useTestAds = true; // ← flip to false for production builds
+
+// Production IDs (your real AdMob units)
+const _prodBannerAndroid       = 'ca-app-pub-2492078126313994/9256149896';
+const _prodBannerIos           = 'ca-app-pub-2492078126313994/9256149896';
+const _prodInterstitialAndroid = 'ca-app-pub-2492078126313994/7943068221';
+const _prodInterstitialIos     = 'ca-app-pub-2492078126313994/7943068221';
+const _prodRewardedAndroid     = 'ca-app-pub-2492078126313994/6629986555';
+const _prodRewardedIos         = 'ca-app-pub-2492078126313994/6629986555';
+
+// Official Google test IDs — always fill, safe to use in debug/CI
+const _testBannerAndroid       = 'ca-app-pub-3940256099942544/6300978111';
+const _testBannerIos           = 'ca-app-pub-3940256099942544/2934735716';
+const _testInterstitialAndroid = 'ca-app-pub-3940256099942544/1033173712';
+const _testInterstitialIos     = 'ca-app-pub-3940256099942544/4411468910';
+const _testRewardedAndroid     = 'ca-app-pub-3940256099942544/5224354917';
+const _testRewardedIos         = 'ca-app-pub-3940256099942544/1712485313';
+
+// ---------------------------------------------------------------------------
+// AdMob error diagnosis
+//
+// AdMob error codes (domain: com.google.android.gms.ads):
+//   0 — INTERNAL_ERROR   : AdMob server returned an unexpected response
+//   1 — INVALID_REQUEST  : Wrong ad unit ID or app not set up in AdMob console
+//   2 — NETWORK_ERROR    : Request failed before reaching AdMob (connectivity)
+//   3 — NO_FILL          : AdMob has no ad to serve right now (normal sometimes)
+//
+// Knowing the source tells you where to look:
+//   admob      → their servers / fill rate issue — nothing you can do right now
+//   appConfig  → check your ad unit IDs and AdMob console app registration
+//   network    → device has no route to AdMob servers
+//   unknown    → log it and watch for patterns
+// ---------------------------------------------------------------------------
+enum AdFailureSource { admob, appConfig, network, unknown }
+
+class AdDiagnostic {
+  final String   adType;   // 'banner' | 'interstitial' | 'rewarded'
+  final int      code;
+  final String   domain;
+  final String   message;
+  final AdFailureSource source;
+  final DateTime timestamp;
+
+  AdDiagnostic({
+    required this.adType,
+    required this.code,
+    required this.domain,
+    required this.message,
+    required this.source,
+    required this.timestamp,
+  });
+
+  static AdFailureSource _classify(int code, String domain) {
+    if (code == 2) return AdFailureSource.network;
+    if (code == 1) return AdFailureSource.appConfig;
+    if (code == 0 || code == 3) return AdFailureSource.admob;
+    return AdFailureSource.unknown;
+  }
+
+  factory AdDiagnostic.fromError(String adType, LoadAdError error) {
+    return AdDiagnostic(
+      adType:    adType,
+      code:      error.code,
+      domain:    error.domain,
+      message:   error.message,
+      source:    _classify(error.code, error.domain),
+      timestamp: DateTime.now(),
+    );
+  }
+
+  String get summary {
+    final src = switch (source) {
+      AdFailureSource.admob     => '🔴 ADMOB SIDE',
+      AdFailureSource.appConfig => '⚙️  APP CONFIG',
+      AdFailureSource.network   => '📶 NETWORK',
+      AdFailureSource.unknown   => '❓ UNKNOWN',
+    };
+    return '[$adType] $src  code=$code  "$message"  domain=$domain';
+  }
+
+  /// Human-readable fix hint shown in debug output
+  String get hint {
+    return switch (source) {
+      AdFailureSource.admob =>
+        code == 3
+          ? 'No ad inventory right now — normal during testing. Try again later.'
+          : 'AdMob internal error — their servers. Nothing to fix on your end.',
+      AdFailureSource.appConfig =>
+        'Check: (1) ad unit ID is correct, (2) app is registered in AdMob console, '
+        '(3) app bundle ID matches what AdMob expects.',
+      AdFailureSource.network =>
+        'Device cannot reach AdMob servers. Check internet connection.',
+      AdFailureSource.unknown =>
+        'Unrecognised error code $code from domain "$domain". Monitor for patterns.',
+    };
+  }
+}
 
 class AdManager {
   static final AdManager _instance = AdManager._internal();
   static AdManager get instance => _instance;
   AdManager._internal();
 
-  bool _sdkReady       = false; // MobileAds.initialize() completed
-  bool _hasNetwork     = true;  // optimistic default
+  bool _sdkReady       = false;
+  bool _hasNetwork     = true;
   bool _adBlocked      = false;
   int  _consecutiveFails = 0;
+
+  /// Last 20 ad failures — inspect with AdManager.instance.recentFailures
+  final List<AdDiagnostic> _recentFailures = [];
+  List<AdDiagnostic> get recentFailures => List.unmodifiable(_recentFailures);
 
   InterstitialAd? _interstitialAd;
   RewardedAd?     _rewardedAd;
@@ -56,11 +155,21 @@ class AdManager {
 
     // 3. Initialize AdMob SDK
     try {
-      await MobileAds.instance.initialize().timeout(
+      final status = await MobileAds.instance.initialize().timeout(
         const Duration(seconds: 10),
-        onTimeout: () => InitializationStatus({}),
+        onTimeout: () {
+          debugPrint('⚠️  AdMob SDK init timed out after 10s');
+          return InitializationStatus({});
+        },
       );
-    } catch (_) {}
+      debugPrint('✅ AdMob SDK initialized. Adapter statuses:');
+      status.adapterStatuses.forEach((adapter, adapterStatus) {
+        debugPrint('   $adapter → ${adapterStatus.state.name} (${adapterStatus.description})');
+      });
+      if (_useTestAds) debugPrint('🧪 TEST AD IDs active — remember to flip _useTestAds before release');
+    } catch (e) {
+      debugPrint('❌ AdMob SDK init threw: $e');
+    }
 
     _sdkReady = true;
     sdkReadyNotifier.value = true; // triggers BannerAdWidget rebuilds
@@ -93,14 +202,22 @@ class AdManager {
   bool get isAdBlocked => _adBlocked;
 
   // =========================================================================
-  // AD UNIT IDs
+  // AD UNIT IDs — routes to test or prod based on _useTestAds flag
   // =========================================================================
   static String get bannerAdUnitId =>
-      Platform.isAndroid ? _bannerAndroid : _bannerIos;
+      _useTestAds
+          ? (Platform.isAndroid ? _testBannerAndroid       : _testBannerIos)
+          : (Platform.isAndroid ? _prodBannerAndroid       : _prodBannerIos);
+
   static String get interstitialAdUnitId =>
-      Platform.isAndroid ? _interstitialAndroid : _interstitialIos;
+      _useTestAds
+          ? (Platform.isAndroid ? _testInterstitialAndroid : _testInterstitialIos)
+          : (Platform.isAndroid ? _prodInterstitialAndroid : _prodInterstitialIos);
+
   static String get rewardedAdUnitId =>
-      Platform.isAndroid ? _rewardedAndroid : _rewardedIos;
+      _useTestAds
+          ? (Platform.isAndroid ? _testRewardedAndroid     : _testRewardedIos)
+          : (Platform.isAndroid ? _prodRewardedAndroid     : _prodRewardedIos);
 
   // =========================================================================
   // INTERSTITIAL
@@ -120,8 +237,7 @@ class AdManager {
         },
         onAdFailedToLoad: (error) {
           _interstitialAd = null;
-          _trackFailure();
-          // Retry after 15s on failure
+          _trackFailure('interstitial', error);
           Future.delayed(const Duration(seconds: 15), () {
             if (_interstitialAd == null && _sdkReady) _loadInterstitialAd();
           });
@@ -208,7 +324,7 @@ class AdManager {
         },
         onAdFailedToLoad: (error) {
           _rewardedAd = null;
-          _trackFailure();
+          _trackFailure('rewarded', error);
           Future.delayed(const Duration(seconds: 15), () {
             if (_rewardedAd == null && _sdkReady) _loadRewardedAd();
           });
@@ -256,16 +372,33 @@ class AdManager {
     if (!_hasNetwork && showNudge) return _noNetworkNudge();
     if (_adBlocked  && showNudge) return _adBlockedNudge();
     // Always return BannerAdWidget — it handles its own SDK-ready wait
-    return BannerAdWidget(
-      adUnitId: bannerAdUnitId,
-      onFailed: _trackFailure,
-    );
+    return BannerAdWidget(adUnitId: bannerAdUnitId);
   }
 
   // =========================================================================
-  // FAILURE TRACKING
+  // FAILURE TRACKING & DIAGNOSIS
   // =========================================================================
-  void _trackFailure() {
+  void _logFailure(String adType, LoadAdError error) {
+    final diag = AdDiagnostic.fromError(adType, error);
+    _recentFailures.add(diag);
+    if (_recentFailures.length > 20) _recentFailures.removeAt(0);
+
+    // Always visible in the debug console — easy to spot what's wrong
+    debugPrint('');
+    debugPrint('╔══ AdMob LOAD FAILURE ═══════════════════════════════════');
+    debugPrint('║  ${diag.summary}');
+    debugPrint('║  💡 ${diag.hint}');
+    if (_useTestAds) {
+      debugPrint('║  🧪 Running with TEST ad IDs');
+    } else {
+      debugPrint('║  🚀 Running with PRODUCTION ad IDs');
+    }
+    debugPrint('╚══════════════════════════════════════════════════════════');
+    debugPrint('');
+  }
+
+  void _trackFailure(String adType, LoadAdError error) {
+    _logFailure(adType, error);
     _consecutiveFails++;
     if (_consecutiveFails >= 5) {
       _adBlocked = true;
@@ -354,10 +487,16 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
           _bannerAd = null;
+          AdManager.instance._trackFailure('banner', error);
           widget.onFailed?.call();
           if (_attempts < 3 && mounted) {
             final delay = [3, 8, 20][_attempts];
             _attempts++;
+            Future.delayed(Duration(seconds: delay), () {
+              if (mounted) _load();
+            });
+          }
+        },
             Future.delayed(Duration(seconds: delay), () {
               if (mounted) _load();
             });
