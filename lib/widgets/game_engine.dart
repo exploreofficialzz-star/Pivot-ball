@@ -16,61 +16,57 @@ class Ball {
   });
 
   void update(double dt, double barAngle, double barY, Size screenSize) {
-    final barHalfWidth = GameConstants.barWidth / 2;
-    final barLeft  = screenSize.width / 2 - barHalfWidth;
-    final barRight = screenSize.width / 2 + barHalfWidth;
-
-    // Is the ball currently resting on the bar surface?
-    final onBar = position.dy >= barY - radius - 2 &&
-                  position.dx >= barLeft - radius &&
-                  position.dx <= barRight + radius;
-
-    if (onBar) {
-      // Roll along the tilted bar — gravity component along the slope
-      final gravityAlong = GameConstants.gravity * sin(barAngle);
-      velocity = Offset(velocity.dx + gravityAlong * dt, velocity.dy);
-    } else {
-      // Free flight — full downward gravity
-      velocity = Offset(velocity.dx, velocity.dy + GameConstants.gravity * dt);
-    }
-
-    // Friction (air resistance / rolling)
+    // Gravity along the bar
+    final gravityAlong = GameConstants.gravity * sin(barAngle);
+    
+    // Apply gravity
+    velocity = Offset(
+      velocity.dx + gravityAlong * dt,
+      velocity.dy + GameConstants.gravity * 0.1 * dt, // Slight vertical gravity
+    );
+    
+    // Apply friction
     velocity = Offset(
       velocity.dx * GameConstants.friction,
       velocity.dy * GameConstants.friction,
     );
-
-    // Integrate position
+    
+    // Update position
     position = Offset(
       position.dx + velocity.dx * dt,
       position.dy + velocity.dy * dt,
     );
-
-    // Bar surface collision — bounce ball back up off the bar
-    if (onBar && position.dy > barY - radius) {
-      position = Offset(position.dx, barY - radius);
-      if (velocity.dy > 0) {
-        velocity = Offset(
-          velocity.dx * 0.95,
-          -velocity.dy.abs() * GameConstants.bounceDamping,
-        );
-      }
+    
+    // Keep ball on bar
+    final barHalfWidth = GameConstants.barWidth / 2;
+    final barLeft = screenSize.width / 2 - barHalfWidth;
+    final barRight = screenSize.width / 2 + barHalfWidth;
+    
+    // Bar surface Y at ball's X position
+    final barSurfaceY = barY - cos(barAngle) * (position.dx - screenSize.width / 2) * tan(barAngle);
+    
+    // Keep ball above bar
+    if (position.dy > barSurfaceY - radius) {
+      position = Offset(position.dx, barSurfaceY - radius);
+      velocity = Offset(velocity.dx, velocity.dy * -GameConstants.bounceDamping);
+      
+      // Add rolling friction when on bar
+      velocity = Offset(velocity.dx * 0.95, velocity.dy);
     }
-
-    // Screen side walls
-    if (position.dx < radius) {
-      position = Offset(radius, position.dy);
-      velocity = Offset(-velocity.dx * 0.6, velocity.dy);
+    
+    // Wall collisions
+    if (position.dx < barLeft + radius) {
+      position = Offset(barLeft + radius, position.dy);
+      velocity = Offset(-velocity.dx * 0.5, velocity.dy);
     }
-    if (position.dx > screenSize.width - radius) {
-      position = Offset(screenSize.width - radius, position.dy);
-      velocity = Offset(-velocity.dx * 0.6, velocity.dy);
+    if (position.dx > barRight - radius) {
+      position = Offset(barRight - radius, position.dy);
+      velocity = Offset(-velocity.dx * 0.5, velocity.dy);
     }
-
-    // Top wall — bounce back down
-    if (position.dy < radius) {
-      position = Offset(position.dx, radius);
-      velocity = Offset(velocity.dx, velocity.dy.abs() * GameConstants.bounceDamping);
+    
+    // Bottom boundary (fall off)
+    if (position.dy > screenSize.height + radius * 2) {
+      // Ball fell off
     }
   }
 
@@ -134,13 +130,16 @@ class GameEngine extends StatefulWidget {
 class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
   late Ball ball;
   late Bar bar;
-  double _leftInput = 0;
+  double _leftInput  = 0;
   double _rightInput = 0;
+  // Ramp-up: tracks how long each joystick has been held.
+  // Speed starts near-zero and builds to full over ~0.6s.
+  double _leftHoldTime  = 0;
+  double _rightHoldTime = 0;
   int _score = 0;
   double _timeLeft = 60;
   Timer? _gameTimer;
   bool _gameOver = false;
-  final Set<int> _collectedTargets = {};
   late AnimationController _gameLoopController;
   DateTime? _lastFrameTime;
   Size? _screenSize;
@@ -173,7 +172,6 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     
     ball = Ball(
       position: Offset(size.width / 2, barY - GameConstants.ballRadius - 5),
-      velocity: const Offset(0, -600), // launch upward into the playfield
     );
     
     _gameLoopController.forward();
@@ -207,18 +205,32 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
         : 0.016;
     _lastFrameTime = now;
     
-    // Update bar from inputs
+    // Update bar from inputs — with ramp-up so holding feels gradual
     final size = _screenSize!;
     final range = (GameConstants.maxBarY - GameConstants.minBarY) * size.height;
-    final minY = GameConstants.minBarY * size.height;
-    
-    bar.targetLeftY = (bar.leftY - _leftInput * dt * range * 2).clamp(
-      minY,
-      GameConstants.maxBarY * size.height,
+    final minY  = GameConstants.minBarY * size.height;
+
+    // Accumulate hold time while pushed; reset instantly on release
+    if (_leftInput.abs() > 0.05) {
+      _leftHoldTime = (_leftHoldTime + dt).clamp(0.0, 0.6);
+    } else {
+      _leftHoldTime = 0.0;
+    }
+    if (_rightInput.abs() > 0.05) {
+      _rightHoldTime = (_rightHoldTime + dt).clamp(0.0, 0.6);
+    } else {
+      _rightHoldTime = 0.0;
+    }
+
+    // easeIn curve: starts very slow, ramps to full speed after ~0.6 s
+    final leftRamp  = Curves.easeIn.transform((_leftHoldTime  / 0.6).clamp(0.0, 1.0));
+    final rightRamp = Curves.easeIn.transform((_rightHoldTime / 0.6).clamp(0.0, 1.0));
+
+    bar.targetLeftY = (bar.leftY - _leftInput * leftRamp * dt * range * 2).clamp(
+      minY, GameConstants.maxBarY * size.height,
     );
-    bar.targetRightY = (bar.rightY - _rightInput * dt * range * 2).clamp(
-      minY,
-      GameConstants.maxBarY * size.height,
+    bar.targetRightY = (bar.rightY - _rightInput * rightRamp * dt * range * 2).clamp(
+      minY, GameConstants.maxBarY * size.height,
     );
     
     bar.update(dt);
@@ -238,9 +250,6 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     // Update ball
     ball.update(dt, bar.angle, bar.getYatX(ball.position.dx, size), size);
     
-    // Check bumper collisions
-    _checkBumpers();
-
     // Check hole collisions
     _checkHoles();
     
@@ -261,54 +270,28 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
     for (int i = 0; i < widget.levelData.holePositions.length; i++) {
       final holePos = widget.levelData.holePositions[i];
       final dist = (ball.position - holePos).distance;
-
-      if (dist < GameConstants.holeRadius - 2) {
-        final isTarget = widget.levelData.targetHoleIndices.contains(i);
-        final isDead   = widget.levelData.deadHoleIndices.contains(i);
-
-        if (isTarget && !_collectedTargets.contains(i)) {
+      
+      if (dist < GameConstants.holeRadius - 5) {
+        if (i == widget.levelData.targetHoleIndex) {
+          // Win!
           setState(() {
-            _collectedTargets.add(i);
-            _score += GameConstants.pointsPerLevel * widget.levelData.level;
-          });
-          AudioManager.instance.playWin();
-
-          if (_collectedTargets.length >= widget.levelData.targetHoleIndices.length) {
-            // All targets hit — level complete
-            setState(() {
-              _gameOver = true;
-              _score += (_timeLeft * 10).toInt();
-            });
+            _gameOver = true;
+            
+            _score += GameConstants.pointsPerLevel * widget.levelData.level + (_timeLeft * 10).toInt();
+            AudioManager.instance.playWin();
             widget.onGameEnd(_score, widget.levelData.level, true);
-          } else {
-            // More targets remain — bounce ball back up
-            ball.velocity = Offset(ball.velocity.dx * 0.5, -500);
-          }
+          });
           return;
-        } else if (isDead) {
-          setState(() { _gameOver = true; });
-          AudioManager.instance.playLose();
-          widget.onGameEnd(_score, widget.levelData.level, false);
+        } else if (widget.levelData.deadHoleIndices.contains(i)) {
+          // Dead hole - lose
+          setState(() {
+            _gameOver = true;
+            
+            AudioManager.instance.playLose();
+            widget.onGameEnd(_score, widget.levelData.level, false);
+          });
           return;
         }
-      }
-    }
-  }
-
-  void _checkBumpers() {
-    for (final pegPos in widget.levelData.bumperPegs) {
-      final dist = (ball.position - pegPos).distance;
-      final minDist = GameConstants.bumperRadius + ball.radius;
-      if (dist < minDist && dist > 0) {
-        final normal = (ball.position - pegPos) / dist;
-        // Push ball outside the bumper
-        ball.position = pegPos + normal * (minDist + 1.0);
-        // Reflect velocity with a small energy boost
-        final dot = ball.velocity.dx * normal.dx + ball.velocity.dy * normal.dy;
-        ball.velocity = Offset(
-          (ball.velocity.dx - 2 * dot * normal.dx) * 1.1,
-          (ball.velocity.dy - 2 * dot * normal.dy) * 1.1,
-        );
       }
     }
   }
@@ -335,7 +318,8 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
       _timeLeft  = bonusSeconds.toDouble();
       _leftInput  = 0;
       _rightInput = 0;
-      _collectedTargets.clear();
+      _leftHoldTime  = 0;
+      _rightHoldTime = 0;
 
       bar = Bar(
         leftY:       barY,
@@ -345,7 +329,6 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
       );
       ball = Ball(
         position: Offset(size.width / 2, barY - GameConstants.ballRadius - 5),
-        velocity: const Offset(0, -600),
       );
     });
 
@@ -397,90 +380,63 @@ class GameEngineState extends State<GameEngine> with TickerProviderStateMixin {
           ),
         ),
         
-        // Bumper pegs
-        ...widget.levelData.bumperPegs.map((pegPos) {
-          return Positioned(
-            left: pegPos.dx - GameConstants.bumperRadius,
-            top:  pegPos.dy - GameConstants.bumperRadius,
-            child: Container(
-              width:  GameConstants.bumperRadius * 2,
-              height: GameConstants.bumperRadius * 2,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const RadialGradient(
-                  colors: [Color(0xFFFFD700), Color(0xFFB8860B)],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: GameConstants.goldColor.withOpacity(0.6),
-                    blurRadius: 8,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }),
-
         // Holes
         ...List.generate(widget.levelData.holePositions.length, (index) {
-          final pos       = widget.levelData.holePositions[index];
-          final isTarget  = widget.levelData.targetHoleIndices.contains(index);
-          final isDead    = widget.levelData.deadHoleIndices.contains(index);
-          final collected = _collectedTargets.contains(index);
-
+          final pos = widget.levelData.holePositions[index];
+          final isTarget = index == widget.levelData.targetHoleIndex;
+          final isDead = widget.levelData.deadHoleIndices.contains(index);
+          
           return Positioned(
             left: pos.dx - GameConstants.holeRadius,
-            top:  pos.dy - GameConstants.holeRadius,
+            top: pos.dy - GameConstants.holeRadius,
             child: Container(
-              width:  GameConstants.holeRadius * 2,
+              width: GameConstants.holeRadius * 2,
               height: GameConstants.holeRadius * 2,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: collected
-                    ? GameConstants.neonGreen.withOpacity(0.15)
-                    : isTarget
-                        ? GameConstants.neonGreen.withOpacity(0.3)
-                        : isDead
-                            ? GameConstants.neonRed.withOpacity(0.3)
-                            : Colors.black.withOpacity(0.5),
+                color: isTarget
+                    ? GameConstants.neonGreen.withOpacity(0.3)
+                    : isDead
+                        ? GameConstants.neonRed.withOpacity(0.3)
+                        : Colors.black.withOpacity(0.5),
                 border: Border.all(
-                  color: collected
-                      ? GameConstants.neonGreen.withOpacity(0.3)
-                      : isTarget
-                          ? GameConstants.neonGreen
-                          : isDead
-                              ? GameConstants.neonRed
-                              : Colors.white.withOpacity(0.3),
-                  width: (isTarget || isDead) && !collected ? 2.5 : 1,
+                  color: isTarget
+                      ? GameConstants.neonGreen
+                      : isDead
+                          ? GameConstants.neonRed
+                          : Colors.white.withOpacity(0.3),
+                  width: isTarget || isDead ? 3 : 1.5,
                 ),
-                boxShadow: collected
-                    ? null
-                    : isTarget
+                boxShadow: isTarget
+                    ? [
+                        BoxShadow(
+                          color: GameConstants.neonGreen.withOpacity(0.6),
+                          blurRadius: 15,
+                          spreadRadius: 5,
+                        ),
+                      ]
+                    : isDead
                         ? [
                             BoxShadow(
-                              color: GameConstants.neonGreen.withOpacity(0.5),
-                              blurRadius: 12,
+                              color: GameConstants.neonRed.withOpacity(0.4),
+                              blurRadius: 10,
                               spreadRadius: 3,
                             ),
                           ]
-                        : isDead
-                            ? [
-                                BoxShadow(
-                                  color: GameConstants.neonRed.withOpacity(0.4),
-                                  blurRadius: 8,
-                                  spreadRadius: 2,
-                                ),
-                              ]
-                            : null,
+                        : null,
               ),
               child: Center(
                 child: Container(
-                  width:  GameConstants.holeRadius * 1.1,
-                  height: GameConstants.holeRadius * 1.1,
+                  width: GameConstants.holeRadius * 1.2,
+                  height: GameConstants.holeRadius * 1.2,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.black.withOpacity(collected ? 0.3 : 0.85),
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.black.withOpacity(0.9),
+                        Colors.black.withOpacity(0.6),
+                      ],
+                    ),
                   ),
                 ),
               ),
